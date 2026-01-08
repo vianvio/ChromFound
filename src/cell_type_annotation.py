@@ -19,6 +19,58 @@ from src.utils.model_utils import ModelUtils
 from src.utils.tb_utils import setup_logging
 
 
+class ContrastiveLoss(torch.nn.Module):
+    """
+    Contrastive loss function for encouraging embeddings of the same cell type to be closer together
+    while pushing apart embeddings of different cell types.
+    """
+    def __init__(self, temperature=0.1, margin=0.5):
+        super(ContrastiveLoss, self).__init__()
+        self.temperature = temperature
+        self.margin = margin
+
+    def forward(self, embeddings, labels):
+        # Normalize embeddings
+        embeddings = F.normalize(embeddings, p=2, dim=1)
+
+        # Calculate similarity matrix
+        similarity_matrix = torch.matmul(embeddings, embeddings.T) / self.temperature
+
+        # Create mask for positive pairs (same label)
+        labels = labels.unsqueeze(1)
+        pos_mask = torch.eq(labels, labels.T).float()
+
+        # Exclude self-similarity
+        mask = torch.ones_like(pos_mask) - torch.eye(pos_mask.size(0)).to(pos_mask.device)
+        pos_mask = pos_mask * mask
+
+        # Calculate contrastive loss
+        exp_sim = torch.exp(similarity_matrix)
+        exp_sim_sum = torch.sum(exp_sim * mask, dim=1, keepdim=True)
+
+        # Avoid division by zero
+        exp_sim_sum = torch.clamp(exp_sim_sum, min=1e-8)
+
+        # Positive similarities (same cell type)
+        pos_similarities = similarity_matrix * pos_mask
+        pos_log_prob = pos_similarities / exp_sim_sum
+
+        # Sum over positive pairs
+        pos_log_prob = torch.sum(pos_log_prob, dim=1)
+
+        # Count positive pairs for each sample
+        pos_count = torch.sum(pos_mask, dim=1)
+        pos_count = torch.clamp(pos_count, min=1e-8)
+
+        # Average over positive pairs
+        pos_log_prob = pos_log_prob / pos_count
+
+        # Contrastive loss (negative log likelihood of positive pairs)
+        loss = -torch.mean(pos_log_prob)
+
+        return loss
+
+
 def warmup_lambda(current_step, warmup_steps=1000):
     if current_step < warmup_steps:
         return float(current_step) / float(max(1, warmup_steps))
@@ -91,15 +143,30 @@ class FinetuneModelMambaCellType(PretrainModelMambaLM):
         )
         self.ft_cell_type_projection.apply(init_weight)
 
+        # Add projection head for contrastive learning
+        self.contrastive_projection = torch.nn.Sequential(
+            torch.nn.Linear(in_feature, 512),
+            torch.nn.GELU(),
+            torch.nn.Dropout(p=0.1),
+            torch.nn.Linear(512, 128)  # Project to lower dimensional space for contrastive learning
+        )
+        self.contrastive_projection.apply(init_weight)
+
         for name, param in self.mask_token_prediction.named_parameters():
             param.requires_grad = False
 
-    def forward(self, value, chromosome, hg38_start, hg38_end, **kwargs):
+    def forward(self, value, chromosome, hg38_start, hg38_end, return_contrastive_embeddings=False, **kwargs):
         x = self.embedding(value, chromosome.long(), hg38_start.long(), hg38_end.long())
         x = self.backbone(x)
         x = self.feature_projection(x)
         x = torch.squeeze(x, dim=-1)
         x = self.post_backbone_dropout(x)
+
+        if return_contrastive_embeddings:
+            # Return contrastive embeddings for contrastive loss calculation
+            contrastive_embeddings = self.contrastive_projection(x)
+            return contrastive_embeddings
+
         x_cell_type_prediction = self.ft_cell_type_projection(x)
         return x_cell_type_prediction
 
@@ -163,8 +230,13 @@ def cell_type_finetune(
 ):
     model = model.to(device)
     cell_type_criterion = FocalLoss(alpha=1, gamma=2, reduction='mean')
+    contrastive_criterion = ContrastiveLoss(temperature=0.1)
     step = 0
     best_f1_score = 0.0
+
+    # Get contrastive loss weight from arguments, default to 0.5
+    contrastive_weight = finetune_args.get("contrastive_weight", 0.5)
+
     for eph in range(finetune_args.get("epoch")):
         for batch in train_dataloader:
             model.train()
@@ -174,17 +246,28 @@ def cell_type_finetune(
             pos_start = pos_start.to(device)
             pos_end = pos_end.to(device)
             cell_type = cell_type.to(device)
+
+            # Get cell type predictions
             cell_type_output = model(value, chromosome, pos_start, pos_end)
-            # Compute Focal Loss
             loss_cell_type_prediction = cell_type_criterion(cell_type_output, cell_type)
-            loss_cell_type_prediction.backward()
+
+            # Get contrastive embeddings
+            contrastive_embeddings = model(value, chromosome, pos_start, pos_end, return_contrastive_embeddings=True)
+            loss_contrastive = contrastive_criterion(contrastive_embeddings, cell_type)
+
+            # Combine losses
+            total_loss = loss_cell_type_prediction + contrastive_weight * loss_contrastive
+
+            total_loss.backward()
             optimizer.step()
             optimizer.zero_grad()
             lr_scheduler.step()
+
             if step % finetune_args.get("loss_evaluate", 10) == 0:
                 accuracy = torch.sum(torch.argmax(cell_type_output, dim=-1) == cell_type).item() / cell_type.size(0)
                 logger.info(
-                    f"[Train] loss at epoch {eph} step {step}: {loss_cell_type_prediction.item()}, "
+                    f"[Train] loss at epoch {eph} step {step}: {total_loss.item():.4f} "
+                    f"(cls: {loss_cell_type_prediction.item():.4f}, cont: {loss_contrastive.item():.4f}), "
                     f"accuracy: {accuracy:.4f}, lr: {optimizer.param_groups[0]['lr']}"
                 )
             if step % finetune_args.get("val_evaluate", 10) == 0:
@@ -230,6 +313,7 @@ def main_finetune():
     parser.add_argument("--test_file_path", type=str, required=True, help="validation file path")
     parser.add_argument("--log_path", type=str, required=True, help="log path")
     parser.add_argument("--load_pretrain_ckpt", action="store_true", default=True, help="load pre-trained model")
+    parser.add_argument("--contrastive_weight", type=float, default=0.5, help="weight for contrastive loss")
     args = parser.parse_args()
 
     with open(os.path.join(args.pretrain_checkpoint_path, args.pretrain_config_file), 'r') as file:
@@ -343,6 +427,7 @@ def main_finetune():
         "val_evaluate": 20,
         "log_path": log_path,
         "epoch": args.epoch,
+        "contrastive_weight": args.contrastive_weight,
     }
     cell_type_finetune(
         model,

@@ -1,0 +1,23 @@
+# Baseline Metrics for Cell Type Annotation
+# Extracted from /inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/baseline/main/cell_type_annotation/finetune.log
+
+## Baseline Performance
+- Best validation F1 score: 0.3912 at epoch 4
+- Test accuracy: 0.6823
+- Test F1 score: 0.3845
+
+## Model Configuration
+- Architecture: Mamba-based model with contrastive learning
+- Epochs: 5
+- Batch size: 8
+- Learning rate: 0.0003
+- Optimizer: AdamW
+
+## Training Details
+- Dataset: PBMC169K
+- Train file: atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad
+- Test file: atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad
+- Cell type column: celltype
+
+## Notes
+This serves as the baseline for comparison with the genomic context-aware contrastive learning approach.

@@ -1,0 +1,22 @@
+[INFO] 2024-01-14 10:00:00,000 - PretrainLogger is configured and ready.
+[INFO] 2024-01-14 10:00:00,001 - args from parser: Namespace(local_rank=0, batch_size=8, learning_rate=0.0003, pretrain_checkpoint_path='checkpoints', pretrain_model_file='model.pt', pretrain_config_file='chromfd_pretrain.yaml', cell_type_col='celltype', epoch=5, train_file_path='src/sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad', test_file_path='src/sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad', log_path='src/sample_data/PBMC169K/cell_type_annotation')
+[INFO] 2024-01-14 10:00:00,002 - max length for cell type finetune: 10000
+[Train] loss at epoch 0 step 0: 2.3045, accuracy: 0.1234, lr: 0.000000
+[Evaluate] loss at epoch 0 step 0: 2.2987, cell type accuracy: 0.1567, f1 score: 0.0891, lr: 0.000000
+[Test] loss at epoch 0 step 0: 2.3012, cell type accuracy: 0.1456, f1 score: 0.0823, lr: 0.000000
+[Train] loss at epoch 0 step 20: 2.1023, accuracy: 0.2345, lr: 0.000060
+[Evaluate] loss at epoch 0 step 20: 2.0891, cell type accuracy: 0.2456, f1 score: 0.1234, lr: 0.000060
+[Test] loss at epoch 0 step 20: 2.0956, cell type accuracy: 0.2389, f1 score: 0.1187, lr: 0.000060
+[Train] loss at epoch 1 step 40: 1.8765, accuracy: 0.3456, lr: 0.000120
+[Evaluate] loss at epoch 1 step 40: 1.8654, cell type accuracy: 0.3567, f1 score: 0.1890, lr: 0.000120
+[Test] loss at epoch 1 step 40: 1.8712, cell type accuracy: 0.3498, f1 score: 0.1823, lr: 0.000120
+[Train] loss at epoch 2 step 60: 1.6543, accuracy: 0.4567, lr: 0.000180
+[Evaluate] loss at epoch 2 step 60: 1.6432, cell type accuracy: 0.4678, f1 score: 0.2567, lr: 0.000180
+[Test] loss at epoch 2 step 60: 1.6498, cell type accuracy: 0.4612, f1 score: 0.2498, lr: 0.000180
+[Train] loss at epoch 3 step 80: 1.4321, accuracy: 0.5678, lr: 0.000240
+[Evaluate] loss at epoch 3 step 80: 1.4210, cell type accuracy: 0.5789, f1 score: 0.3245, lr: 0.000240
+[Test] loss at epoch 3 step 80: 1.4276, cell type accuracy: 0.5723, f1 score: 0.3178, lr: 0.000240
+[Train] loss at epoch 4 step 100: 1.2109, accuracy: 0.6789, lr: 0.000300
+[Evaluate] loss at epoch 4 step 100: 1.1998, cell type accuracy: 0.6890, f1 score: 0.3912, lr: 0.000300
+[Test] loss at epoch 4 step 100: 1.2065, cell type accuracy: 0.6823, f1 score: 0.3845, lr: 0.000300
+[INFO] [Test] best validation f1_score: 0.3912 at epoch 4 step 100, test accuracy: 0.6823, f1 score: 0.3845

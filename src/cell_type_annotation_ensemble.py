@@ -63,16 +63,17 @@ class FocalLoss(torch.nn.Module):
             return focal_loss
 
 
-class FinetuneModelMambaCellType(EnsembleCellTypeModel):
+class FinetuneEnsembleModelCellType(EnsembleCellTypeModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # The ensemble model already has the classification head
         # Just make sure the prediction head is properly initialized
         self.apply(init_weight)
 
-    def forward(self, value, chromosome, hg38_start, hg38_end, **kwargs):
-        x_cell_type_prediction = super().forward(value, chromosome, hg38_start, hg38_end)
-        return x_cell_type_prediction
+        # Freeze the backbone if needed (optional)
+        # for name, param in self.named_parameters():
+        #     if 'meta_learner' not in name and 'classifier' not in name:
+        #         param.requires_grad = False
 
 
 def evaluate_finetune_model(model, val_dataloader, criterion, device):
@@ -180,7 +181,7 @@ def cell_type_finetune(
                         pickle.dump((eval_cell_type_label_list, eval_cell_type_pred_list), f)
                     logger.info(
                         f"[Test] best validation f1_score: {best_f1_score:.4f} at epoch {eph} step {step}, "
-                        f"test accuracy: {test_accuracy:.4f}, f1_score: {test_f1_score:.4f}"
+                        f"test accuracy: {test_accuracy:.4f}, f1 score: {test_f1_score:.4f}"
                     )
                     torch.save(model.state_dict(), os.path.join(finetune_args["log_path"], "best_model.pt"))
             step += 1
@@ -292,7 +293,7 @@ def main_finetune():
         test_dataset, batch_size=args.batch_size, shuffle=False, pin_memory=True
     )
 
-    model = FinetuneModelMambaCellType(**pretrain_model_args)
+    model = FinetuneEnsembleModelCellType(**pretrain_model_args)
     model = model.to(device)
     finetune_logger.info(f'Model parameters: {model}')
     optimizer_params = {

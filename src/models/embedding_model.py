@@ -11,24 +11,36 @@ class ValueEmbedding(nn.Module):
     def forward(self, x):
         if self.do_fft:
             x = torch.fft.fft(x, dim=-1).real
-        return self.embedding(x.unsqueeze(-1))
+        # x has shape [batch, seq_len, 1], so we don't need to unsqueeze again
+        return self.embedding(x)
 
 
 class PositionalEmbeddingWithDnaPosition(nn.Module):
     def __init__(self, d_model, batch_size, seq_length, positional_temp, device):
         super(PositionalEmbeddingWithDnaPosition, self).__init__()
         self.d_model = d_model
-        self.encoding = torch.zeros(batch_size, seq_length, self.d_model, device=device)
-        # self.encoding = torch.zeros(batch_size, seq_length, self.d_model)
-        self.encoding.requires_grad_(False)
         self.positional_temp = positional_temp
+        self.device = device
 
     def forward(self, x):
-        pos = x.float().unsqueeze(-1) / 1
-        _2i = torch.arange(0, self.d_model, 2, device=x.device)
-        self.encoding[:x.shape[0], :, 0::2] = torch.sin(pos / self.positional_temp / (10000 ** (_2i / self.d_model)))
-        self.encoding[:x.shape[0], :, 1::2] = torch.cos(pos / self.positional_temp / (10000 ** (_2i / self.d_model)))
-        return self.encoding[:x.shape[0], :, :]
+        # x shape: (batch_size, seq_length)
+        batch_size, seq_length = x.shape
+        # Create positional encoding dynamically based on input size
+        encoding = torch.zeros(batch_size, seq_length, self.d_model, device=x.device)
+
+        pos = x.float().unsqueeze(-1)  # (batch_size, seq_length, 1)
+        _2i = torch.arange(0, self.d_model, 2, device=x.device)  # (d_model//2,)
+
+        # Calculate sin/cos values
+        div_term = 10000 ** (_2i.float() / self.d_model)
+        div_term = div_term.unsqueeze(0).unsqueeze(0)  # (1, 1, d_model//2)
+
+        pos_expanded = pos.expand(-1, -1, len(_2i))  # (batch_size, seq_length, d_model//2)
+
+        encoding[:, :, 0::2] = torch.sin(pos_expanded / div_term / self.positional_temp)
+        encoding[:, :, 1::2] = torch.cos(pos_expanded / div_term / self.positional_temp)
+
+        return encoding
 
 
 class PretrainEmbeddingSimple(nn.Module):

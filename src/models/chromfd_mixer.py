@@ -11,6 +11,7 @@ from mamba_ssm.modules.mlp import GatedMLP
 
 from chromfd_block import Block
 from embedding_model import PretrainEmbeddingSimple
+from genomic_dynamic_conv import GenomicDynamicConvBlock
 
 try:
     from mamba_ssm.ops.triton.layer_norm import RMSNorm, layer_norm_fn, rms_norm_fn
@@ -208,12 +209,13 @@ class MambaMixer(nn.Module):
             for i, layer in enumerate(self.layers)
         }
 
-    def forward(self, inputs, inference_params=None, **mixer_kwargs):
+    def forward(self, inputs, inference_params=None, pos_start=None, pos_end=None, **mixer_kwargs):
         hidden_states = inputs
         residual = None
         for layer in self.layers:
             hidden_states, residual = layer(
-                hidden_states, residual, inference_params=inference_params, **mixer_kwargs
+                hidden_states, residual, inference_params=inference_params,
+                pos_start=pos_start, pos_end=pos_end, **mixer_kwargs
             )
         if not self.fused_add_norm:
             residual = (hidden_states + residual) if residual is not None else hidden_states
@@ -269,7 +271,7 @@ class PretrainModelMambaLM(torch.nn.Module):
 
     def forward(self, value, chromosome, hg38_start, hg38_end, key_padding_mask=None):
         x = self.embedding(value, chromosome.long(), hg38_start.long(), hg38_end.long())
-        x = self.backbone(x)
+        x = self.backbone(x, pos_start=hg38_start, pos_end=hg38_end)
         logits = self.mask_token_prediction(x)
 
         return logits

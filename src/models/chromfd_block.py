@@ -4,6 +4,7 @@ from mamba_ssm.ops.triton.layer_norm import layer_norm_fn
 from torch import nn
 
 from chromfd_flashatt import ChromFoundTransformerBlock
+from genomic_dynamic_conv import GenomicDynamicConvBlock
 
 
 class Block(nn.Module):
@@ -49,8 +50,21 @@ class Block(nn.Module):
         else:
             self.chromfound_block = None
 
+        # Add genomic dynamic convolution module
+        self.genomic_conv_block = GenomicDynamicConvBlock(
+            embedding_dim=dim,
+            num_layers=1,
+            dropout=0.1
+        )
+
+        # Gating mechanism to control flow between different modules in reduced space
+        self.gate = nn.Sequential(
+            nn.Linear(32 + 32, 32),  # genomic_reduced (32) + transformer_output_reduced (32)
+            nn.Sigmoid()
+        )
+
     def forward(
-        self, hidden_states, residual=None, inference_params=None, **mixer_kwargs
+        self, hidden_states, residual=None, inference_params=None, pos_start=None, pos_end=None, **mixer_kwargs
     ):
         """
         Pass the input through the encoder layer.
@@ -59,6 +73,8 @@ class Block(nn.Module):
             hidden_states: the sequence to the encoder layer (required).
             residual: hidden_states = Mixer(LN(residual)).
             inference_params: Inference parameters for mamba(required).
+            pos_start: start positions for genomic features
+            pos_end: end positions for genomic features
         """
         # Step 1: Residual connection and normalization
         if not self.fused_add_norm:
@@ -79,14 +95,51 @@ class Block(nn.Module):
             )
 
         # Step 2: Pass through TransformerBlock if present
+        transformer_output = None
         if self.chromfound_block is not None:
-            hidden_states = self.chromfound_block(hidden_states)
-            hidden_states = self.reduction_layer(hidden_states)
+            transformer_output = self.chromfound_block(hidden_states, padding_mask=None)
+            # Apply reduction layer to transformer output to match mixer expectations
+            transformer_output_reduced = self.reduction_layer(transformer_output)
 
-        # Step 3: Pass through mamba mixer
+        # Step 3: Apply genomic dynamic convolution
+        genomic_conv_output = None
+        if pos_start is not None and pos_end is not None:
+            # Use the original hidden states (before transformer) for genomic convolution
+            # and pass transformer output as other_module_output for combination
+            genomic_conv_output = self.genomic_conv_block(
+                hidden_states, pos_start, pos_end,
+                other_module_output=transformer_output if transformer_output is not None else hidden_states
+            )
+
+        # Step 4: Combine outputs using gating mechanism if both are available
+        if genomic_conv_output is not None and transformer_output is not None:
+            # Apply reduction to genomic_conv_output to match transformer dimension for gating
+            genomic_reduced = self.reduction_layer(genomic_conv_output)  # 256 -> 32
+            # Combine reduced representations for gating
+            combined_input = torch.cat([genomic_reduced, transformer_output_reduced], dim=-1)  # 32 + 32 = 64
+            # Apply the gate to get weights for combination
+            gate_weights = self.gate(combined_input)  # (B, L, 32)
+            # Combine in reduced space
+            combined_reduced = gate_weights * genomic_reduced + (1 - gate_weights) * transformer_output_reduced
+            # Use the combined reduced representation for mixer
+            hidden_states = combined_reduced  # 32-dim
+        elif genomic_conv_output is not None:
+            # Apply reduction to genomic conv output to match mixer expectation
+            hidden_states = self.reduction_layer(genomic_conv_output)  # 256 -> 32
+        elif transformer_output is not None:
+            hidden_states = transformer_output_reduced  # Already 32-dim
+        else:
+            # If neither is available, use the original hidden_states after norm
+            # Apply reduction to match mixer expectation
+            hidden_states = self.reduction_layer(hidden_states)  # 256 -> 32
+
+        # Step 5: Pass through mamba mixer (operates on 32-dim representation)
         hidden_states = self.mixer(hidden_states, inference_params=inference_params, **mixer_kwargs)
-        hidden_states = self.expansion_layer(hidden_states)
-        # Step 4: Optional MLP block
+
+        # Step 6: Expand back to original dimension after mixing
+        hidden_states = self.expansion_layer(hidden_states)  # 32 -> 256
+
+        # Step 6: Optional MLP block
         if self.mlp is not None:
             if not self.fused_add_norm:
                 residual = hidden_states + residual

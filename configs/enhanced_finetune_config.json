@@ -1,0 +1,35 @@
+{
+    "finetune_config": {
+        "hierarchical_learning_rates": {
+            "backbone_lr": 1e-5,
+            "classifier_lr": 1e-3
+        },
+        "lora_settings": {
+            "use_lora": true,
+            "lora_rank": 16,
+            "lora_alpha": 32.0,
+            "dropout": 0.1
+        },
+        "training_params": {
+            "batch_size": 16,
+            "learning_rate": 1e-3,
+            "num_epochs": 20,
+            "warmup_steps": 200,
+            "weight_decay": 1e-6
+        },
+        "regularization": {
+            "gradient_clipping": true,
+            "max_grad_norm": 1.0
+        },
+        "early_stopping": {
+            "enabled": true,
+            "patience": 5,
+            "monitor_metric": "f1_score"
+        },
+        "logging": {
+            "log_frequency": 20,
+            "eval_frequency": 20,
+            "save_checkpoints": true
+        }
+    }
+}

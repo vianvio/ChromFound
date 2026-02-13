@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import yaml
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import f1_score
-from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR
 from torch.utils.data import DataLoader
 
 from src.data.dataset_ds import DatasetMultiPad
@@ -159,7 +159,8 @@ def cell_type_finetune(
         optimizer,
         lr_scheduler,
         device,
-        logger
+        logger,
+        grad_clip_val=1.0  # Gradient clipping value
 ):
     model = model.to(device)
     cell_type_criterion = FocalLoss(alpha=1, gamma=2, reduction='mean')
@@ -178,6 +179,10 @@ def cell_type_finetune(
             # Compute Focal Loss
             loss_cell_type_prediction = cell_type_criterion(cell_type_output, cell_type)
             loss_cell_type_prediction.backward()
+            
+            # Apply gradient clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_val)
+            
             optimizer.step()
             optimizer.zero_grad()
             lr_scheduler.step()
@@ -230,6 +235,7 @@ def main_finetune():
     parser.add_argument("--test_file_path", type=str, required=True, help="validation file path")
     parser.add_argument("--log_path", type=str, required=True, help="log path")
     parser.add_argument("--load_pretrain_ckpt", action="store_true", default=True, help="load pre-trained model")
+    parser.add_argument("--grad_clip_val", type=float, default=1.0, help="gradient clipping value")
     args = parser.parse_args()
 
     with open(os.path.join(args.pretrain_checkpoint_path, args.pretrain_config_file), 'r') as file:
@@ -322,7 +328,10 @@ def main_finetune():
         "weight_decay": 1e-6
     }
     optimizer = torch.optim.AdamW(model.parameters(), **optimizer_params)
-    lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_lambda(step, 200))
+    
+    # Calculate total steps for cosine annealing
+    total_steps = len(train_dataloader) * args.epoch
+    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=1e-7)
     if args.load_pretrain_ckpt:
         state_dict = torch.load(str(os.path.join(args.pretrain_checkpoint_path, args.pretrain_model_file)))
         missing_keys, unexpected_keys = model.load_state_dict(state_dict['module'], strict=False)
@@ -353,7 +362,8 @@ def main_finetune():
         optimizer,
         lr_scheduler,
         device,
-        finetune_logger
+        finetune_logger,
+        grad_clip_val=args.grad_clip_val  # Use the gradient clipping value from arguments
     )
 
 

@@ -30,12 +30,14 @@ train_command = [
     '--pretrain_checkpoint_path', inference_config['pretrain_checkpoint_path'],
     '--pretrain_model_file', inference_config['pretrain_model_name'],
     '--pretrain_config_file', inference_config['pretrain_config_file'],
-    '--batch_size', f'{inference_config["batch_size"]}',
     '--epoch', '5',
     '--train_file_path', inference_config["train_file_path"],
     '--test_file_path', inference_config["test_file_path"],
     '--log_path', inference_config["log_path"],
-    '--cell_type_col', 'celltype'
+    '--cell_type_col', 'celltype',
+    '--grad_accum_steps', '4',  # Enable gradient accumulation
+    '--lr_scheduler_type', 'warmup_cosine',  # Use cosine annealing scheduler
+    '--warmup_steps', '100'
 ]
 
 subprocess.run(train_command)

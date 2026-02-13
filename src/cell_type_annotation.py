@@ -3,6 +3,10 @@ import json
 import os
 import pickle
 import random
+import sys
+
+# Add the project root directory to the Python path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import scanpy as sc
 import torch
@@ -351,10 +355,16 @@ def main_finetune():
 
     adata_train_val.obs["tag"] = "train"
     adata_test.obs["tag"] = "test"
-    adata_concat = sc.AnnData.concatenate(adata_train_val, adata_test)
-    adata_train_val = adata_concat[adata_concat.obs["tag"] == "train"]
-    adata_test = adata_concat[adata_concat.obs["tag"] == "test"]
-    max_length = adata_concat.shape[1]
+    
+    # Calculate max_length from the original datasets
+    max_length = max(adata_train_val.shape[1], adata_test.shape[1])
+    
+    # Keep the var attributes intact for each dataset
+    # Since both datasets should have the same features for this task
+    # we can use the var from the training dataset
+    var_for_all = adata_train_val.var.copy()
+    adata_train_val.var = var_for_all
+    adata_test.var = var_for_all  # Assuming both have same features
 
     cell_type = list(set(adata_train_val.obs[args.cell_type_col].unique().tolist() + adata_test.obs[
         args.cell_type_col].unique().tolist()))

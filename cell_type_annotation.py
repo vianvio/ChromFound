@@ -23,7 +23,7 @@ inference_config = {
 }
 
 train_command = [
-    sys.executable, '-m', 'src.cell_type_annotation',
+    sys.executable, 'src/cell_type_annotation.py',
     '--local_rank', f'{inference_config["device"]}',
     '--batch_size', f'{inference_config["batch_size"]}',
     '--learning_rate', '0.0003',

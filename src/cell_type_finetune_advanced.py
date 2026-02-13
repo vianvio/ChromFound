@@ -13,9 +13,8 @@ import scanpy as sc
 import torch
 import torch.nn.functional as F
 import yaml
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import f1_score
-from torch.optim.lr_scheduler import LambdaLR
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, ExponentialLR
 from torch.utils.data import DataLoader
 
 from src.data.dataset_ds import DatasetMultiPad
@@ -32,8 +31,8 @@ def warmup_lambda(current_step, warmup_steps=1000):
 
 def get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, min_lr_ratio=0.1, last_epoch=-1):
     """
-    Create a schedule with a learning rate that decreases following the values of the cosine function between 
-    the initial lr set in the optimizer to 0, after a warmup period during which it increases linearly 
+    Create a schedule with a learning rate that decreases following the values of the cosine function between
+    the initial lr set in the optimizer to 0, after a warmup period during which it increases linearly
     between 0 and the initial lr set in the optimizer.
     """
     def lr_lambda(current_step):
@@ -58,6 +57,21 @@ def get_exponential_schedule_with_warmup(optimizer, num_warmup_steps, num_traini
         # Exponential decay phase
         progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
         return max(min_lr_ratio, decay_rate ** (progress * num_training_steps))
+
+    return LambdaLR(optimizer, lr_lambda, last_epoch)
+
+
+def get_polynomial_decay_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, power=1.0, min_lr_ratio=0.0, last_epoch=-1):
+    """
+    Create a schedule with a learning rate that decays polynomially after a warmup period.
+    """
+    def lr_lambda(current_step):
+        if current_step < num_warmup_steps:
+            # Warmup phase
+            return float(current_step) / float(max(1, num_warmup_steps))
+        # Polynomial decay phase
+        progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
+        return max(min_lr_ratio, (1.0 - progress) ** power)
 
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
@@ -98,6 +112,30 @@ class FocalLoss(torch.nn.Module):
             return focal_loss.sum()
         else:
             return focal_loss
+
+
+class AdaptiveGradientClipping(torch.nn.Module):
+    """
+    Adaptive gradient clipping to prevent exploding gradients
+    """
+    def __init__(self, clip_factor=0.01, eps=1e-3):
+        super().__init__()
+        self.clip_factor = clip_factor
+        self.eps = eps
+
+    def forward(self, parameters):
+        parameters = list(filter(lambda p: p.grad is not None, parameters))
+        
+        for p in parameters:
+            param_norm = torch.norm(p, p=2, dtype=torch.float32)
+            grad_norm = torch.norm(p.grad, p=2, dtype=torch.float32)
+            
+            if param_norm > 0 and grad_norm > 0:
+                max_norm = self.clip_factor * param_norm + self.eps
+                clip_coef = max_norm / (grad_norm + self.eps)
+                
+                if clip_coef < 1:
+                    p.grad.data.mul_(clip_coef)
 
 
 class FinetuneModelMambaCellType(PretrainModelMambaLM):
@@ -150,6 +188,8 @@ def evaluate_finetune_model(model, val_dataloader, criterion, device):
     eval_f1_score = 0
     cell_type_label_list = []
     cell_type_pred_list = []
+    cell_type_prob_list = []  # Store probabilities for ROC calculation
+    
     with torch.no_grad():
         for val_batch in val_dataloader:
             value, chromosome, pos_start, pos_end, cell_type = val_batch
@@ -159,11 +199,16 @@ def evaluate_finetune_model(model, val_dataloader, criterion, device):
             pos_start = pos_start.to(device)
             pos_end = pos_end.to(device)
             cell_type_output = model(value, chromosome, pos_start, pos_end)
+            
+            # Apply softmax to get probabilities
+            cell_type_probs = F.softmax(cell_type_output, dim=-1)
+            
             tmp_loss_cell_type_prediction = criterion(cell_type_output, cell_type_gpu)
             cell_type_pred = torch.argmax(cell_type_output, dim=-1)
 
             cell_type_label_list.extend(cell_type.detach().cpu().numpy().tolist())
             cell_type_pred_list.extend(cell_type_pred.detach().cpu().numpy().tolist())
+            cell_type_prob_list.extend(cell_type_probs.detach().cpu().numpy())
 
             tmp_f1_score = f1_score(cell_type, cell_type_pred.cpu().numpy(), average='macro')
             eval_f1_score += tmp_f1_score
@@ -184,7 +229,27 @@ def evaluate_finetune_model(model, val_dataloader, criterion, device):
     accuracy_tensor = torch.tensor(accuracy).to(device)
     accuracy = accuracy_tensor.item()
 
-    return eval_loss, eval_f1_score, accuracy, cell_type_label_list, cell_type_pred_list
+    # Calculate ROC-AUC if we have binary classification or can compute it
+    try:
+        # For multiclass, we compute ROC-AUC using one-vs-rest approach
+        import numpy as np
+        cell_type_probs_np = np.array(cell_type_prob_list)
+        unique_labels = list(set(cell_type_label_list))
+        
+        if len(unique_labels) == 2:  # Binary classification
+            from sklearn.preprocessing import label_binarize
+            y_true_bin = label_binarize(cell_type_label_list, classes=sorted(unique_labels))[:, 1]  # Get positive class
+            roc_auc = roc_auc_score(y_true_bin, cell_type_probs_np[:, 1])
+        elif len(unique_labels) > 2:  # Multiclass
+            y_true_bin = label_binarize(cell_type_label_list, classes=sorted(unique_labels))
+            roc_auc = roc_auc_score(y_true_bin, cell_type_probs_np, average='macro', multi_class='ovr')
+        else:
+            roc_auc = 0.0  # Single class
+    except Exception as e:
+        print(f"Could not compute ROC-AUC: {str(e)}")
+        roc_auc = 0.0
+
+    return eval_loss, eval_f1_score, accuracy, roc_auc, cell_type_label_list, cell_type_pred_list
 
 
 def cell_type_finetune(
@@ -200,19 +265,24 @@ def cell_type_finetune(
 ):
     model = model.to(device)
     cell_type_criterion = FocalLoss(alpha=1, gamma=2, reduction='mean')
-    
+
     # Gradient accumulation parameters
     grad_accum_steps = finetune_args.get("grad_accum_steps", 1)  # Number of steps to accumulate gradients
     total_steps = finetune_args.get("total_steps", len(train_dataloader) * finetune_args.get("epoch"))
-    
+
     # Initialize step counter
     step = 0
     global_step = 0
     best_f1_score = 0.0
-    
+    best_accuracy = 0.0
+    best_roc_auc = 0.0
+
+    # Initialize adaptive gradient clipping
+    adaptive_clip = AdaptiveGradientClipping(clip_factor=0.01)
+
     for eph in range(finetune_args.get("epoch")):
         optimizer.zero_grad()  # Initialize gradients
-        
+
         for batch_idx, batch in enumerate(train_dataloader):
             model.train()
             value, chromosome, pos_start, pos_end, cell_type = batch
@@ -221,50 +291,53 @@ def cell_type_finetune(
             pos_start = pos_start.to(device)
             pos_end = pos_end.to(device)
             cell_type = cell_type.to(device)
-            
+
             cell_type_output = model(value, chromosome, pos_start, pos_end)
             # Compute Focal Loss
             loss_cell_type_prediction = cell_type_criterion(cell_type_output, cell_type)
-            
+
             # Normalize the loss to account for gradient accumulation
             loss_cell_type_prediction = loss_cell_type_prediction / grad_accum_steps
-            
+
             # Backward pass
             loss_cell_type_prediction.backward()
-            
+
             # Perform optimizer step after accumulating gradients
             if (batch_idx + 1) % grad_accum_steps == 0 or (batch_idx + 1) == len(train_dataloader):
-                # Clip gradients to prevent exploding gradients
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                
+                # Apply adaptive gradient clipping
+                adaptive_clip(model.parameters())
+
                 optimizer.step()
                 optimizer.zero_grad()  # Reset gradients after step
                 lr_scheduler.step()  # Update learning rate
-                
+
                 global_step += 1
-                
+
                 if global_step % finetune_args.get("loss_evaluate", 10) == 0:
                     accuracy = torch.sum(torch.argmax(cell_type_output, dim=-1) == cell_type).item() / cell_type.size(0)
                     logger.info(
                         f"[Train] loss at epoch {eph} step {global_step}: {loss_cell_type_prediction.item() * grad_accum_steps}, "
                         f"accuracy: {accuracy:.4f}, lr: {optimizer.param_groups[0]['lr']:.8f}"
                     )
-                    
+
                 if global_step % finetune_args.get("val_evaluate", 10) == 0:
-                    eval_loss, eval_f1_score, eval_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
+                    eval_loss, eval_f1_score, eval_accuracy, eval_roc_auc, eval_cell_type_label_list, eval_cell_type_pred_list = \
                         evaluate_finetune_model(model, val_dataloader, cell_type_criterion, device)
-                    test_loss, test_f1_score, test_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
+                    test_loss, test_f1_score, test_accuracy, test_roc_auc, eval_cell_type_label_list, eval_cell_type_pred_list = \
                         evaluate_finetune_model(model, test_dataloader, cell_type_criterion, device)
+                    
                     logger.info(
                         f"[Evaluate] loss at epoch {eph} step {global_step}: {eval_loss}, "
-                        f"cell type accuracy: {eval_accuracy:.4f}, f1 score: {eval_f1_score:.4f}, "
+                        f"cell type accuracy: {eval_accuracy:.4f}, f1 score: {eval_f1_score:.4f}, roc auc: {eval_roc_auc:.4f}, "
                         f"lr: {optimizer.param_groups[0]['lr']:.8f}"
                     )
                     logger.info(
                         f"[Test] loss at epoch {eph} step {global_step}: {test_loss}, "
-                        f"cell type accuracy: {test_accuracy:.4f}, f1 score: {test_f1_score:.4f}, "
+                        f"cell type accuracy: {test_accuracy:.4f}, f1 score: {test_f1_score:.4f}, roc auc: {test_roc_auc:.4f}, "
                         f"lr: {optimizer.param_groups[0]['lr']:.8f}"
                     )
+                    
+                    # Save best model based on F1 score
                     if eval_f1_score > best_f1_score:
                         best_f1_score = eval_f1_score
                         with open(os.path.join(
@@ -272,15 +345,36 @@ def cell_type_finetune(
                             pickle.dump((eval_cell_type_label_list, eval_cell_type_pred_list), f)
                         logger.info(
                             f"[Test] best validation f1_score: {best_f1_score:.4f} at epoch {eph} step {global_step}, "
-                            f"test accuracy: {test_accuracy:.4f}, f1_score: {test_f1_score:.4f}"
+                            f"test accuracy: {test_accuracy:.4f}, f1_score: {test_f1_score:.4f}, roc_auc: {test_roc_auc:.4f}"
                         )
                         torch.save(model.state_dict(), os.path.join(finetune_args["log_path"], "best_model.pt"))
+                        
+                        # Save metrics
+                        metrics = {
+                            'best_f1_score': best_f1_score,
+                            'best_accuracy': test_accuracy,
+                            'best_roc_auc': test_roc_auc,
+                            'final_test_f1_score': test_f1_score,
+                            'final_test_accuracy': test_accuracy,
+                            'final_test_roc_auc': test_roc_auc
+                        }
+                        with open(os.path.join(finetune_args["log_path"], "metrics.json"), "w") as f:
+                            json.dump(metrics, f)
             else:
                 # Still accumulating gradients, don't update optimizer yet
                 pass
-            
+
             step += 1
+            
+        # Save model at the end of each epoch
         torch.save(model.state_dict(), os.path.join(finetune_args["log_path"], f"epoch_{eph}.pt"))
+        
+        # Early stopping check (optional)
+        if finetune_args.get("early_stopping", False):
+            patience = finetune_args.get("patience", 3)
+            if eph > patience and best_f1_score <= max([best_f1_score]):
+                logger.info(f"Early stopping triggered at epoch {eph}")
+                break
 
 
 def main_finetune():
@@ -298,10 +392,13 @@ def main_finetune():
     parser.add_argument("--log_path", type=str, required=True, help="log path")
     parser.add_argument("--load_pretrain_ckpt", action="store_true", default=True, help="load pre-trained model")
     parser.add_argument("--grad_accum_steps", type=int, default=1, help="number of gradient accumulation steps")
-    parser.add_argument("--lr_scheduler_type", type=str, default="warmup_linear", choices=["warmup_linear", "warmup_cosine", "warmup_exponential"], help="type of learning rate scheduler")
+    parser.add_argument("--lr_scheduler_type", type=str, default="warmup_cosine", choices=["warmup_linear", "warmup_cosine", "warmup_exponential", "warmup_polynomial"], help="type of learning rate scheduler")
     parser.add_argument("--warmup_steps", type=int, default=200, help="number of warmup steps")
     parser.add_argument("--min_lr_ratio", type=float, default=0.1, help="minimum learning rate ratio for scheduling")
     parser.add_argument("--decay_rate", type=float, default=0.95, help="decay rate for exponential scheduling")
+    parser.add_argument("--poly_power", type=float, default=1.0, help="power for polynomial decay scheduling")
+    parser.add_argument("--early_stopping", action="store_true", default=False, help="enable early stopping")
+    parser.add_argument("--patience", type=int, default=3, help="patience for early stopping")
     args = parser.parse_args()
 
     with open(os.path.join(args.pretrain_checkpoint_path, args.pretrain_config_file), 'r') as file:
@@ -319,19 +416,25 @@ def main_finetune():
     adata_train_val = load_data(args.train_file_path)
     adata_test = load_data(args.test_file_path)
 
-    adata_train_val.obs["tag"] = "train"
-    adata_test.obs["tag"] = "test"
-    adata_concat = sc.AnnData.concatenate(adata_train_val, adata_test)
-    adata_train_val = adata_concat[adata_concat.obs["tag"] == "train"]
-    adata_test = adata_concat[adata_concat.obs["tag"] == "test"]
-    max_length = adata_concat.shape[1]
+    # Determine max_length from the original datasets
+    max_length = adata_train_val.shape[1]
 
+    # Combine cell types from both datasets for mapping
     cell_type = list(set(adata_train_val.obs[args.cell_type_col].unique().tolist() + adata_test.obs[
         args.cell_type_col].unique().tolist()))
     cell_type_map = {cell_type: idx for idx, cell_type in enumerate(sorted(cell_type))}
 
+    # Split train_val into actual train and validation sets
+    idx_list = [i for i in range(adata_train_val.X.shape[0])]
+    random.shuffle(idx_list)
+    split_idx = int(len(idx_list) * 0.9)
+    train_idx = idx_list[:split_idx]
+    val_idx = idx_list[split_idx:]
+    adata_train = adata_train_val[train_idx]
+    adata_val = adata_train_val[val_idx]
+
     if not os.path.exists(log_path):
-        os.mkdir(log_path)
+        os.makedirs(log_path, exist_ok=True)
     os.system(f"cp {os.path.join(args.pretrain_checkpoint_path, args.pretrain_config_file)} {log_path}")
     os.system(f"cp {os.path.join(args.pretrain_checkpoint_path, 'chromosome_vocab.yaml')} {log_path}")
 
@@ -357,14 +460,6 @@ def main_finetune():
     pretrain_model_args["device"] = device
     pretrain_model_args["mask_ratio"] = 0.0
     pretrain_data_args["return_batch_label"] = False
-
-    idx_list = [i for i in range(adata_train_val.X.shape[0])]
-    random.shuffle(idx_list)
-    split_idx = int(len(idx_list) * 0.9)
-    train_idx = idx_list[:split_idx]
-    val_idx = idx_list[split_idx:]
-    adata_train = adata_train_val[train_idx]
-    adata_val = adata_train_val[val_idx]
 
     train_dataset = DatasetMultiPad(*[adata_train], **pretrain_data_args)
     val_dataset = DatasetMultiPad(*[adata_val], **pretrain_data_args)
@@ -394,32 +489,40 @@ def main_finetune():
         "weight_decay": 1e-6
     }
     optimizer = torch.optim.AdamW(model.parameters(), **optimizer_params)
-    
+
     # Calculate total training steps for scheduler
     total_steps = len(train_dataloader) * args.epoch
-    
+
     # Select learning rate scheduler based on the specified type
     if args.lr_scheduler_type == "warmup_linear":
         lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_lambda(step, args.warmup_steps))
     elif args.lr_scheduler_type == "warmup_cosine":
         lr_scheduler = get_cosine_schedule_with_warmup(
-            optimizer, 
-            num_warmup_steps=args.warmup_steps, 
+            optimizer,
+            num_warmup_steps=args.warmup_steps,
             num_training_steps=total_steps,
             min_lr_ratio=args.min_lr_ratio
         )
     elif args.lr_scheduler_type == "warmup_exponential":
         lr_scheduler = get_exponential_schedule_with_warmup(
-            optimizer, 
-            num_warmup_steps=args.warmup_steps, 
+            optimizer,
+            num_warmup_steps=args.warmup_steps,
             num_training_steps=total_steps,
             decay_rate=args.decay_rate,
+            min_lr_ratio=args.min_lr_ratio
+        )
+    elif args.lr_scheduler_type == "warmup_polynomial":
+        lr_scheduler = get_polynomial_decay_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=args.warmup_steps,
+            num_training_steps=total_steps,
+            power=args.poly_power,
             min_lr_ratio=args.min_lr_ratio
         )
     else:
         # Default to the original warmup lambda
         lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_lambda(step, args.warmup_steps))
-        
+
     if args.load_pretrain_ckpt:
         state_dict = torch.load(str(os.path.join(args.pretrain_checkpoint_path, args.pretrain_model_file)))
         missing_keys, unexpected_keys = model.load_state_dict(state_dict['module'], strict=False)
@@ -442,6 +545,8 @@ def main_finetune():
         "epoch": args.epoch,
         "grad_accum_steps": args.grad_accum_steps,
         "total_steps": len(train_dataloader) * args.epoch,
+        "early_stopping": args.early_stopping,
+        "patience": args.patience
     }
     cell_type_finetune(
         model,

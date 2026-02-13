@@ -1,0 +1,28 @@
+Reading h5ad file from src/sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad
+Reading h5ad file from src/sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad
+Train Dataset Length: 720
+Validation Dataset Length: 80
+Test Dataset Length: 200
+Missing keys (not found in checkpoint):
+  feature_projection.0.weight
+  feature_projection.0.bias
+  feature_projection.3.weight
+  feature_projection.3.bias
+  ft_cell_type_projection.0.weight
+  ft_cell_type_projection.0.bias
+  ft_cell_type_projection.3.weight
+  ft_cell_type_projection.3.bias
+  ft_cell_type_projection.6.weight
+  ft_cell_type_projection.6.bias
+  ft_cell_type_projection.9.weight
+  ft_cell_type_projection.9.bias
+Could not compute ROC-AUC: cannot access local variable 'label_binarize' where it is not associated with a value
+Could not compute ROC-AUC: cannot access local variable 'label_binarize' where it is not associated with a value
+Could not compute ROC-AUC: cannot access local variable 'label_binarize' where it is not associated with a value
+Could not compute ROC-AUC: cannot access local variable 'label_binarize' where it is not associated with a value
+Could not compute ROC-AUC: cannot access local variable 'label_binarize' where it is not associated with a value
+Could not compute ROC-AUC: cannot access local variable 'label_binarize' where it is not associated with a value
+Could not compute ROC-AUC: cannot access local variable 'label_binarize' where it is not associated with a value
+Could not compute ROC-AUC: cannot access local variable 'label_binarize' where it is not associated with a value
+Could not compute ROC-AUC: cannot access local variable 'label_binarize' where it is not associated with a value
+Could not compute ROC-AUC: cannot access local variable 'label_binarize' where it is not associated with a value

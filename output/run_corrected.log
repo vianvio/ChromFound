@@ -1,0 +1,12 @@
+Starting advanced cell type annotation with gradient accumulation and dynamic learning rate scheduling...
+Command: /opt/conda/bin/python -m src.cell_type_finetune_advanced --local_rank 0 --batch_size 8 --learning_rate 0.0003 --pretrain_checkpoint_path checkpoints --pretrain_model_file model.pt --pretrain_config_file chromfd_pretrain.yaml --epoch 5 --train_file_path src/sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad --test_file_path src/sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad --log_path output/idea1_results/cell_type_annotation --cell_type_col celltype --grad_accum_steps 4 --lr_scheduler_type warmup_cosine --warmup_steps 200 --min_lr_ratio 0.1
+Training completed.
+Return code: 0
+
+Final Metrics:
+Best F1 Score: 0.17714285850524902
+Best Accuracy: 0.1899999976158142
+Best ROC AUC: 0.0
+Final Test F1 Score: 0.08335759490728378
+Final Test Accuracy: 0.1899999976158142
+Final Test ROC AUC: 0.0

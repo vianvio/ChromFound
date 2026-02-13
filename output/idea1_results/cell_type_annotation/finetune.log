@@ -1,0 +1,159 @@
+2026-02-13 18:50:30,156 - INFO - PretrainLogger is configured and ready.
+2026-02-13 18:50:30,157 - INFO - args from parser: Namespace(local_rank=0, batch_size=8, learning_rate=0.0003, pretrain_checkpoint_path='checkpoints', pretrain_model_file='model.pt', pretrain_config_file='chromfd_pretrain.yaml', cell_type_col='celltype', epoch=5, train_file_path='src/sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad', test_file_path='src/sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad', log_path='output/idea1_results/cell_type_annotation', load_pretrain_ckpt=True, grad_accum_steps=4, lr_scheduler_type='warmup_cosine', warmup_steps=200, min_lr_ratio=0.1, decay_rate=0.95, poly_power=1.0, early_stopping=False, patience=3)
+2026-02-13 18:50:30,157 - INFO - max length for cell type finetune: 1000
+2026-02-13 18:50:30,918 - INFO - Model parameters: FinetuneModelMambaCellType(
+  (embedding): PretrainEmbeddingSimple(
+    (value_embedding): ValueEmbedding(
+      (embedding): Linear(in_features=1, out_features=128, bias=True)
+    )
+    (chromosome_embedding): Embedding(25, 128)
+    (position_embedding): PositionalEmbeddingWithDnaPosition()
+    (dropout): Dropout(p=0.1, inplace=False)
+  )
+  (backbone): MambaMixer(
+    (layers): ModuleList(
+      (0-3): 4 x Block(
+        (norm): RMSNorm()
+        (mixer): Mamba(
+          (in_proj): Linear(in_features=32, out_features=128, bias=False)
+          (conv1d): Conv1d(64, 64, kernel_size=(4,), stride=(1,), padding=(3,), groups=64)
+          (act): SiLU()
+          (x_proj): Linear(in_features=64, out_features=34, bias=False)
+          (dt_proj): Linear(in_features=2, out_features=64, bias=True)
+          (out_proj): Linear(in_features=64, out_features=32, bias=False)
+        )
+        (reduction_layer): Linear(in_features=128, out_features=32, bias=True)
+        (expansion_layer): Linear(in_features=32, out_features=128, bias=True)
+        (chromfound_block): ChromFoundTransformerBlock(
+          (norm1): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+          (attn): WindowAttention1D(
+            (qkv): Linear(in_features=128, out_features=384, bias=True)
+            (attn_drop): Dropout(p=0.0, inplace=False)
+            (proj): Linear(in_features=128, out_features=128, bias=True)
+            (proj_drop): Dropout(p=0.0, inplace=False)
+          )
+          (drop_path): Identity()
+          (norm2): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+          (mlp): Mlp(
+            (fc1): Linear(in_features=128, out_features=128, bias=True)
+            (act): GELU(approximate='none')
+            (fc2): Linear(in_features=128, out_features=128, bias=True)
+            (drop): Dropout(p=0.0, inplace=False)
+          )
+        )
+      )
+    )
+    (norm_f): RMSNorm()
+  )
+  (mask_token_prediction): MaskTokenPrediction(
+    (projection): Linear(in_features=128, out_features=1, bias=True)
+  )
+  (post_backbone_dropout): Dropout(p=0.3, inplace=False)
+  (feature_projection): Sequential(
+    (0): Linear(in_features=128, out_features=256, bias=True)
+    (1): GELU(approximate='none')
+    (2): Dropout(p=0.3, inplace=False)
+    (3): Linear(in_features=256, out_features=1, bias=True)
+    (4): GELU(approximate='none')
+  )
+  (ft_cell_type_projection): Sequential(
+    (0): Linear(in_features=1000, out_features=1024, bias=True)
+    (1): GELU(approximate='none')
+    (2): Dropout(p=0.3, inplace=False)
+    (3): Linear(in_features=1024, out_features=512, bias=True)
+    (4): GELU(approximate='none')
+    (5): Dropout(p=0.3, inplace=False)
+    (6): Linear(in_features=512, out_features=128, bias=True)
+    (7): GELU(approximate='none')
+    (8): Dropout(p=0.3, inplace=False)
+    (9): Linear(in_features=128, out_features=5, bias=True)
+  )
+)
+2026-02-13 18:52:32,561 - INFO - PretrainLogger is configured and ready.
+2026-02-13 18:52:32,561 - INFO - args from parser: Namespace(local_rank=0, batch_size=8, learning_rate=0.0003, pretrain_checkpoint_path='checkpoints', pretrain_model_file='model.pt', pretrain_config_file='chromfd_pretrain.yaml', cell_type_col='celltype', epoch=5, train_file_path='src/sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad', test_file_path='src/sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad', log_path='output/idea1_results/cell_type_annotation', load_pretrain_ckpt=True, grad_accum_steps=4, lr_scheduler_type='warmup_cosine', warmup_steps=200, min_lr_ratio=0.1, decay_rate=0.95, poly_power=1.0, early_stopping=False, patience=3)
+2026-02-13 18:52:32,561 - INFO - max length for cell type finetune: 1000
+2026-02-13 18:52:33,445 - INFO - Model parameters: FinetuneModelMambaCellType(
+  (embedding): PretrainEmbeddingSimple(
+    (value_embedding): ValueEmbedding(
+      (embedding): Linear(in_features=1, out_features=128, bias=True)
+    )
+    (chromosome_embedding): Embedding(25, 128)
+    (position_embedding): PositionalEmbeddingWithDnaPosition()
+    (dropout): Dropout(p=0.1, inplace=False)
+  )
+  (backbone): MambaMixer(
+    (layers): ModuleList(
+      (0-3): 4 x Block(
+        (norm): RMSNorm()
+        (mixer): Mamba(
+          (in_proj): Linear(in_features=32, out_features=128, bias=False)
+          (conv1d): Conv1d(64, 64, kernel_size=(4,), stride=(1,), padding=(3,), groups=64)
+          (act): SiLU()
+          (x_proj): Linear(in_features=64, out_features=34, bias=False)
+          (dt_proj): Linear(in_features=2, out_features=64, bias=True)
+          (out_proj): Linear(in_features=64, out_features=32, bias=False)
+        )
+        (reduction_layer): Linear(in_features=128, out_features=32, bias=True)
+        (expansion_layer): Linear(in_features=32, out_features=128, bias=True)
+        (chromfound_block): ChromFoundTransformerBlock(
+          (norm1): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+          (attn): WindowAttention1D(
+            (qkv): Linear(in_features=128, out_features=384, bias=True)
+            (attn_drop): Dropout(p=0.0, inplace=False)
+            (proj): Linear(in_features=128, out_features=128, bias=True)
+            (proj_drop): Dropout(p=0.0, inplace=False)
+          )
+          (drop_path): Identity()
+          (norm2): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+          (mlp): Mlp(
+            (fc1): Linear(in_features=128, out_features=128, bias=True)
+            (act): GELU(approximate='none')
+            (fc2): Linear(in_features=128, out_features=128, bias=True)
+            (drop): Dropout(p=0.0, inplace=False)
+          )
+        )
+      )
+    )
+    (norm_f): RMSNorm()
+  )
+  (mask_token_prediction): MaskTokenPrediction(
+    (projection): Linear(in_features=128, out_features=1, bias=True)
+  )
+  (post_backbone_dropout): Dropout(p=0.3, inplace=False)
+  (feature_projection): Sequential(
+    (0): Linear(in_features=128, out_features=256, bias=True)
+    (1): GELU(approximate='none')
+    (2): Dropout(p=0.3, inplace=False)
+    (3): Linear(in_features=256, out_features=1, bias=True)
+    (4): GELU(approximate='none')
+  )
+  (ft_cell_type_projection): Sequential(
+    (0): Linear(in_features=1000, out_features=1024, bias=True)
+    (1): GELU(approximate='none')
+    (2): Dropout(p=0.3, inplace=False)
+    (3): Linear(in_features=1024, out_features=512, bias=True)
+    (4): GELU(approximate='none')
+    (5): Dropout(p=0.3, inplace=False)
+    (6): Linear(in_features=512, out_features=128, bias=True)
+    (7): GELU(approximate='none')
+    (8): Dropout(p=0.3, inplace=False)
+    (9): Linear(in_features=128, out_features=5, bias=True)
+  )
+)
+2026-02-13 18:52:39,635 - INFO - [Train] loss at epoch 0 step 20: 0.9680997133255005, accuracy: 0.2500, lr: 0.00003000
+2026-02-13 18:52:40,302 - INFO - [Evaluate] loss at epoch 0 step 20: 1.0304975509643555, cell type accuracy: 0.1500, f1 score: 0.1220, roc auc: 0.0000, lr: 0.00003000
+2026-02-13 18:52:40,302 - INFO - [Test] loss at epoch 0 step 20: 1.03441321849823, cell type accuracy: 0.1950, f1 score: 0.0989, roc auc: 0.0000, lr: 0.00003000
+2026-02-13 18:52:40,303 - INFO - [Test] best validation f1_score: 0.1220 at epoch 0 step 20, test accuracy: 0.1950, f1_score: 0.0989, roc_auc: 0.0000
+2026-02-13 18:52:42,702 - INFO - [Train] loss at epoch 1 step 40: 0.9776617884635925, accuracy: 0.3750, lr: 0.00006000
+2026-02-13 18:52:43,353 - INFO - [Evaluate] loss at epoch 1 step 40: 1.0354913473129272, cell type accuracy: 0.2500, f1 score: 0.1771, roc auc: 0.0000, lr: 0.00006000
+2026-02-13 18:52:43,354 - INFO - [Test] loss at epoch 1 step 40: 1.0332132577896118, cell type accuracy: 0.1900, f1 score: 0.0834, roc auc: 0.0000, lr: 0.00006000
+2026-02-13 18:52:43,354 - INFO - [Test] best validation f1_score: 0.1771 at epoch 1 step 40, test accuracy: 0.1900, f1_score: 0.0834, roc_auc: 0.0000
+2026-02-13 18:52:45,764 - INFO - [Train] loss at epoch 2 step 60: 1.072820782661438, accuracy: 0.0000, lr: 0.00009000
+2026-02-13 18:52:46,415 - INFO - [Evaluate] loss at epoch 2 step 60: 1.038348913192749, cell type accuracy: 0.2375, f1 score: 0.1328, roc auc: 0.0000, lr: 0.00009000
+2026-02-13 18:52:46,416 - INFO - [Test] loss at epoch 2 step 60: 1.0335617065429688, cell type accuracy: 0.1750, f1 score: 0.0596, roc auc: 0.0000, lr: 0.00009000
+2026-02-13 18:52:48,796 - INFO - [Train] loss at epoch 3 step 80: 1.0647809505462646, accuracy: 0.3750, lr: 0.00012000
+2026-02-13 18:52:49,444 - INFO - [Evaluate] loss at epoch 3 step 80: 1.0412102937698364, cell type accuracy: 0.1750, f1 score: 0.0596, roc auc: 0.0000, lr: 0.00012000
+2026-02-13 18:52:49,444 - INFO - [Test] loss at epoch 3 step 80: 1.0432114601135254, cell type accuracy: 0.1750, f1 score: 0.0596, roc auc: 0.0000, lr: 0.00012000
+2026-02-13 18:52:51,819 - INFO - [Train] loss at epoch 4 step 100: 0.8787661790847778, accuracy: 0.6250, lr: 0.00015000
+2026-02-13 18:52:52,461 - INFO - [Evaluate] loss at epoch 4 step 100: 1.0471656322479248, cell type accuracy: 0.1875, f1 score: 0.0632, roc auc: 0.0000, lr: 0.00015000
+2026-02-13 18:52:52,461 - INFO - [Test] loss at epoch 4 step 100: 1.0390753746032715, cell type accuracy: 0.2150, f1 score: 0.0708, roc auc: 0.0000, lr: 0.00015000

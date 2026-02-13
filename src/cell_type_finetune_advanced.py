@@ -1,3 +1,7 @@
+"""
+Advanced fine-tuning script for ChromFound with gradient accumulation and dynamic learning rate scheduling
+"""
+
 import argparse
 import json
 import math
@@ -11,7 +15,7 @@ import torch.nn.functional as F
 import yaml
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import f1_score
-from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, ExponentialLR
+from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 
 from src.data.dataset_ds import DatasetMultiPad
@@ -415,6 +419,7 @@ def main_finetune():
     else:
         # Default to the original warmup lambda
         lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_lambda(step, args.warmup_steps))
+        
     if args.load_pretrain_ckpt:
         state_dict = torch.load(str(os.path.join(args.pretrain_checkpoint_path, args.pretrain_model_file)))
         missing_keys, unexpected_keys = model.load_state_dict(state_dict['module'], strict=False)

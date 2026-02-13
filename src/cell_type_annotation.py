@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import yaml
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import f1_score
-from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR
 from torch.utils.data import DataLoader
 
 from src.data.dataset_ds import DatasetMultiPad
@@ -38,6 +38,23 @@ def init_weight(m):
     if isinstance(m, torch.nn.Linear):
         torch.nn.init.xavier_normal_(m.weight)
         torch.nn.init.zeros_(m.bias)
+
+
+class LabelSmoothingCrossEntropy(torch.nn.Module):
+    """
+    Cross entropy loss with label smoothing for improved generalization.
+    """
+    def __init__(self, smoothing=0.1):
+        super(LabelSmoothingCrossEntropy, self).__init__()
+        self.smoothing = smoothing
+
+    def forward(self, pred, target):
+        confidence = 1.0 - self.smoothing
+        log_probs = F.log_softmax(pred, dim=-1)
+        nll_loss = F.nll_loss(log_probs, target, reduction='none')
+        smooth_loss = -log_probs.mean(dim=-1)
+        loss = confidence * nll_loss + self.smoothing * smooth_loss
+        return loss.mean()
 
 
 class FocalLoss(torch.nn.Module):
@@ -162,9 +179,17 @@ def cell_type_finetune(
         logger
 ):
     model = model.to(device)
-    cell_type_criterion = FocalLoss(alpha=1, gamma=2, reduction='mean')
+    
+    # Use label smoothing cross entropy instead of focal loss for better generalization
+    if finetune_args.get("use_label_smoothing", False):
+        cell_type_criterion = LabelSmoothingCrossEntropy(smoothing=0.1)
+    else:
+        cell_type_criterion = FocalLoss(alpha=1, gamma=2, reduction='mean')
+        
     step = 0
     best_f1_score = 0.0
+    grad_clip_thresh = finetune_args.get("grad_clip_thresh", 1.0)  # Default gradient clipping threshold
+    
     for eph in range(finetune_args.get("epoch")):
         for batch in train_dataloader:
             model.train()
@@ -175,12 +200,18 @@ def cell_type_finetune(
             pos_end = pos_end.to(device)
             cell_type = cell_type.to(device)
             cell_type_output = model(value, chromosome, pos_start, pos_end)
-            # Compute Focal Loss
+            
+            # Compute loss with label smoothing
             loss_cell_type_prediction = cell_type_criterion(cell_type_output, cell_type)
             loss_cell_type_prediction.backward()
+            
+            # Apply gradient clipping to prevent exploding gradients
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
+            
             optimizer.step()
             optimizer.zero_grad()
             lr_scheduler.step()
+            
             if step % finetune_args.get("loss_evaluate", 10) == 0:
                 accuracy = torch.sum(torch.argmax(cell_type_output, dim=-1) == cell_type).item() / cell_type.size(0)
                 logger.info(
@@ -209,7 +240,7 @@ def cell_type_finetune(
                         pickle.dump((eval_cell_type_label_list, eval_cell_type_pred_list), f)
                     logger.info(
                         f"[Test] best validation f1_score: {best_f1_score:.4f} at epoch {eph} step {step}, "
-                        f"test accuracy: {test_accuracy:.4f}, f1_score: {test_f1_score:.4f}"
+                        f"test accuracy: {test_accuracy:.4f}, f1 score: {test_f1_score:.4f}"
                     )
                     torch.save(model.state_dict(), os.path.join(finetune_args["log_path"], "best_model.pt"))
             step += 1
@@ -315,14 +346,38 @@ def main_finetune():
     model = FinetuneModelMambaCellType(**pretrain_model_args)
     model = model.to(device)
     finetune_logger.info(f'Model parameters: {model}')
-    optimizer_params = {
-        "lr": args.learning_rate,
-        "betas": (0.8, 0.999),
-        "eps": 1e-8,
-        "weight_decay": 1e-6
-    }
-    optimizer = torch.optim.AdamW(model.parameters(), **optimizer_params)
-    lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_lambda(step, 200))
+    
+    # Implement hierarchical learning rates: lower LR for backbone, higher LR for classification head
+    backbone_params = []
+    classifier_params = []
+    
+    for name, param in model.named_parameters():
+        if "ft_cell_type_projection" in name:
+            # Higher learning rate for the newly added classification head
+            classifier_params.append(param)
+        else:
+            # Lower learning rate for the pre-trained backbone
+            backbone_params.append(param)
+    
+    # Define different learning rates for different parts of the model
+    optimizer_grouped_parameters = [
+        {
+            "params": backbone_params,
+            "lr": args.learning_rate * 0.1,  # 1e-5 if base LR is 1e-4
+            "weight_decay": 1e-6,
+        },
+        {
+            "params": classifier_params,
+            "lr": args.learning_rate,  # 1e-4 for classification head
+            "weight_decay": 1e-6,
+        }
+    ]
+    
+    optimizer = torch.optim.AdamW(optimizer_grouped_parameters, betas=(0.8, 0.999), eps=1e-8)
+    
+    # Use CosineAnnealingLR scheduler instead of LambdaLR for smoother decay
+    total_steps = len(train_dataloader) * args.epoch
+    lr_scheduler = CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=args.learning_rate * 0.01)
     if args.load_pretrain_ckpt:
         state_dict = torch.load(str(os.path.join(args.pretrain_checkpoint_path, args.pretrain_model_file)))
         missing_keys, unexpected_keys = model.load_state_dict(state_dict['module'], strict=False)
@@ -343,6 +398,8 @@ def main_finetune():
         "val_evaluate": 20,
         "log_path": log_path,
         "epoch": args.epoch,
+        "use_label_smoothing": True,  # Enable label smoothing
+        "grad_clip_thresh": 1.0,      # Gradient clipping threshold
     }
     cell_type_finetune(
         model,

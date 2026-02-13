@@ -3,7 +3,7 @@ from mamba_ssm.ops.triton.layer_norm import RMSNorm
 from mamba_ssm.ops.triton.layer_norm import layer_norm_fn
 from torch import nn
 
-from chromfd_flashatt import ChromFoundTransformerBlock
+from .chromfd_flashatt import ChromFoundTransformerBlock
 
 
 class Block(nn.Module):

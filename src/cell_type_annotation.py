@@ -17,6 +17,7 @@ from src.data.dataset_ds import DatasetMultiPad
 from src.models.chromfd_mixer import PretrainModelMambaLM
 from src.utils.model_utils import ModelUtils
 from src.utils.tb_utils import setup_logging
+from src.lora.utils import configure_lora_model, print_trainable_parameters
 
 
 def warmup_lambda(current_step, warmup_steps=1000):
@@ -93,6 +94,14 @@ class FinetuneModelMambaCellType(PretrainModelMambaLM):
 
         for name, param in self.mask_token_prediction.named_parameters():
             param.requires_grad = False
+            
+        # Store LoRA configuration if provided
+        self.use_lora = self.model_args.get("use_lora", False)
+        self.lora_config = self.model_args.get("lora_config", {})
+        
+        # Apply LoRA if enabled
+        if self.use_lora:
+            configure_lora_model(self, self.lora_config)
 
     def forward(self, value, chromosome, hg38_start, hg38_end, **kwargs):
         x = self.embedding(value, chromosome.long(), hg38_start.long(), hg38_end.long())
@@ -230,6 +239,10 @@ def main_finetune():
     parser.add_argument("--test_file_path", type=str, required=True, help="validation file path")
     parser.add_argument("--log_path", type=str, required=True, help="log path")
     parser.add_argument("--load_pretrain_ckpt", action="store_true", default=True, help="load pre-trained model")
+    parser.add_argument("--use_lora", action="store_true", default=False, help="enable LoRA fine-tuning")
+    parser.add_argument("--lora_rank", type=int, default=16, help="LoRA rank")
+    parser.add_argument("--lora_alpha", type=int, default=32, help="LoRA alpha parameter")
+    parser.add_argument("--lora_dropout", type=float, default=0.05, help="LoRA dropout rate")
     args = parser.parse_args()
 
     with open(os.path.join(args.pretrain_checkpoint_path, args.pretrain_config_file), 'r') as file:
@@ -312,9 +325,23 @@ def main_finetune():
         test_dataset, batch_size=args.batch_size, shuffle=False, pin_memory=True
     )
 
+    # Add LoRA configuration to model args if LoRA is enabled
+    pretrain_model_args["use_lora"] = args.use_lora
+    if args.use_lora:
+        pretrain_model_args["lora_config"] = {
+            "rank": args.lora_rank,
+            "alpha": args.lora_alpha,
+            "dropout": args.lora_dropout,
+            "target_modules": ["Linear"]  # Target linear layers for LoRA injection
+        }
+    
     model = FinetuneModelMambaCellType(**pretrain_model_args)
     model = model.to(device)
+    
+    # Print model parameter statistics
     finetune_logger.info(f'Model parameters: {model}')
+    print_trainable_parameters(model)
+    
     optimizer_params = {
         "lr": args.learning_rate,
         "betas": (0.8, 0.999),

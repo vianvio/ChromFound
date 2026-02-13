@@ -66,6 +66,31 @@ python -m src/cell_embedding \
 ```
 For an interactive walkthrough and examples, see the tutorial notebook `cell_embedding.ipynb`.
 
+### Parameter-Efficient Fine-tuning with LoRA
+ChromFound now supports Low-Rank Adaptation (LoRA) for parameter-efficient fine-tuning, which significantly reduces computational requirements while maintaining performance:
+
+```bash
+# Cell type annotation with LoRA
+python -m src/cell_type_annotation \
+    --data_path sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad \
+    --pretrain_checkpoint_path src/checkpoints \
+    --pretrain_model_file model.pt \
+    --pretrain_config_file chromfd_pretrain.yaml \
+    --batch_size 16 \
+    --cell_type_col celltype \
+    --epoch 10 \
+    --learning_rate 1e-4 \
+    --log_path ./logs \
+    --train_file_path sample_data/PBMC169K/train.h5ad \
+    --test_file_path sample_data/PBMC169K/test.h5ad \
+    --use_lora \
+    --lora_rank 16 \
+    --lora_alpha 32 \
+    --lora_dropout 0.05
+```
+
+For more details about LoRA implementation, see `LoRA_IMPLEMENTATION.md`.
+
 ## Data Format
 
 ### Input Data Requirements

@@ -12,6 +12,7 @@ from tqdm import tqdm
 from src.data.dataset_ds import DatasetMultiPad
 from src.models.chromfd_mixer import PretrainModelMambaLM
 from src.utils.model_utils import ModelUtils
+from src.lora.utils import configure_lora_model, print_trainable_parameters
 
 logging.basicConfig(level=logging.INFO)
 
@@ -68,6 +69,10 @@ def main():
     parser.add_argument('--batch_size', type=int, default=64, help='batch size')
     parser.add_argument('--cell_type_col', required=True, help='column name of cell type')
     parser.add_argument('--output_path', type=str, required=True, help='Path to save the updated h5ad file')
+    parser.add_argument("--use_lora", action="store_true", default=False, help="enable LoRA for embedding generation")
+    parser.add_argument("--lora_rank", type=int, default=16, help="LoRA rank")
+    parser.add_argument("--lora_alpha", type=int, default=32, help="LoRA alpha parameter")
+    parser.add_argument("--lora_dropout", type=float, default=0.05, help="LoRA dropout rate")
     args = parser.parse_args()
 
     device = torch.device(f"cuda:{args.local_rank}" if torch.cuda.is_available() else "cpu")
@@ -99,9 +104,29 @@ def main():
     pretrain_model_args["mask_ratio"] = 0.0
     pretrain_data_args["return_batch_label"] = False
 
+    # Add LoRA configuration to model args if LoRA is enabled
+    if args.use_lora:
+        pretrain_model_args["use_lora"] = True
+        pretrain_model_args["lora_config"] = {
+            "rank": args.lora_rank,
+            "alpha": args.lora_alpha,
+            "dropout": args.lora_dropout,
+            "target_modules": ["Linear"]  # Target linear layers for LoRA injection
+        }
+    else:
+        pretrain_model_args["use_lora"] = False
+        pretrain_model_args["lora_config"] = {}
+    
     model = EmbeddingModel(**pretrain_model_args)
     state_dict = torch.load(str(os.path.join(pretrain_path, args.pretrain_model_file)))
     model.load_state_dict(state_dict['module'])
+    
+    # Apply LoRA if enabled
+    if args.use_lora:
+        configure_lora_model(model, pretrain_model_args["lora_config"])
+        logging.info("LoRA configuration applied to the model")
+        print_trainable_parameters(model)
+    
     model = model.to(device)
     adataset = DatasetMultiPad(*[adata], **pretrain_data_args)
     adata_dataloader = DataLoader(

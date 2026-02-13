@@ -10,6 +10,7 @@ import torch.nn.functional as F
 import yaml
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import f1_score
+from sklearn.metrics import roc_auc_score
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 
@@ -122,6 +123,7 @@ def evaluate_finetune_model(model, val_dataloader, criterion, device):
     eval_f1_score = 0
     cell_type_label_list = []
     cell_type_pred_list = []
+    cell_type_prob_list = []  # Store probabilities for ROC calculation
     with torch.no_grad():
         for val_batch in val_dataloader:
             value, chromosome, pos_start, pos_end, cell_type = val_batch
@@ -131,11 +133,16 @@ def evaluate_finetune_model(model, val_dataloader, criterion, device):
             pos_start = pos_start.to(device)
             pos_end = pos_end.to(device)
             cell_type_output = model(value, chromosome, pos_start, pos_end)
+            
+            # Apply softmax to get probabilities for ROC calculation
+            cell_type_probs = torch.softmax(cell_type_output, dim=-1)
+            
             tmp_loss_cell_type_prediction = criterion(cell_type_output, cell_type_gpu)
             cell_type_pred = torch.argmax(cell_type_output, dim=-1)
 
             cell_type_label_list.extend(cell_type.detach().cpu().numpy().tolist())
             cell_type_pred_list.extend(cell_type_pred.detach().cpu().numpy().tolist())
+            cell_type_prob_list.extend(cell_type_probs.detach().cpu().numpy())
 
             tmp_f1_score = f1_score(cell_type, cell_type_pred.cpu().numpy(), average='macro')
             eval_f1_score += tmp_f1_score
@@ -156,7 +163,18 @@ def evaluate_finetune_model(model, val_dataloader, criterion, device):
     accuracy_tensor = torch.tensor(accuracy).to(device)
     accuracy = accuracy_tensor.item()
 
-    return eval_loss, eval_f1_score, accuracy, cell_type_label_list, cell_type_pred_list
+    # Calculate ROC AUC score
+    try:
+        # For multiclass classification, we calculate ROC AUC using 'ovr' (one-vs-rest)
+        roc_auc = roc_auc_score(cell_type_label_list, cell_type_prob_list, multi_class='ovr', average='macro')
+        roc_auc_tensor = torch.tensor(roc_auc).to(device)
+        roc_auc = roc_auc_tensor.item()
+    except Exception as e:
+        # In case of issues with ROC calculation (e.g., too few samples of a class)
+        print(f"Warning: Could not calculate ROC AUC: {str(e)}")
+        roc_auc = 0.0
+
+    return eval_loss, eval_f1_score, accuracy, roc_auc, cell_type_label_list, cell_type_pred_list
 
 
 def cell_type_finetune(
@@ -197,18 +215,18 @@ def cell_type_finetune(
                     f"accuracy: {accuracy:.4f}, lr: {optimizer.param_groups[0]['lr']}"
                 )
             if step % finetune_args.get("val_evaluate", 10) == 0:
-                eval_loss, eval_f1_score, eval_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
+                eval_loss, eval_f1_score, eval_accuracy, eval_roc_auc, eval_cell_type_label_list, eval_cell_type_pred_list = \
                     evaluate_finetune_model(model, val_dataloader, cell_type_criterion, device)
-                test_loss, test_f1_score, test_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
+                test_loss, test_f1_score, test_accuracy, test_roc_auc, eval_cell_type_label_list, eval_cell_type_pred_list = \
                     evaluate_finetune_model(model, test_dataloader, cell_type_criterion, device)
                 logger.info(
                     f"[Evaluate] loss at epoch {eph} step {step}: {eval_loss}, "
-                    f"cell type accuracy: {eval_accuracy:.4f}, f1 score: {eval_f1_score:.4f}, "
+                    f"cell type accuracy: {eval_accuracy:.4f}, f1 score: {eval_f1_score:.4f}, roc auc: {eval_roc_auc:.4f}, "
                     f"lr: {optimizer.param_groups[0]['lr']:.6f}"
                 )
                 logger.info(
                     f"[Test] loss at epoch {eph} step {step}: {test_loss}, "
-                    f"cell type accuracy: {test_accuracy:.4f}, f1 score: {test_f1_score:.4f}, "
+                    f"cell type accuracy: {test_accuracy:.4f}, f1 score: {test_f1_score:.4f}, roc auc: {test_roc_auc:.4f}, "
                     f"lr: {optimizer.param_groups[0]['lr']:.6f}"
                 )
                 if eval_f1_score > best_f1_score:
@@ -260,11 +278,19 @@ def main_finetune():
     adata_train_val = load_data(args.train_file_path)
     adata_test = load_data(args.test_file_path)
 
+    # Store original var data before concatenation
+    original_var_train = adata_train_val.var.copy()
+    original_var_test = adata_test.var.copy()
+    
     adata_train_val.obs["tag"] = "train"
     adata_test.obs["tag"] = "test"
     adata_concat = sc.AnnData.concatenate(adata_train_val, adata_test)
     adata_train_val = adata_concat[adata_concat.obs["tag"] == "train"]
     adata_test = adata_concat[adata_concat.obs["tag"] == "test"]
+    
+    # Restore var attributes after concatenation since concatenate may not preserve them
+    adata_train_val.var = original_var_train
+    adata_test.var = original_var_test
     max_length = adata_concat.shape[1]
 
     cell_type = list(set(adata_train_val.obs[args.cell_type_col].unique().tolist() + adata_test.obs[

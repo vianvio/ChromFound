@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from tf_data_process import DataProcessorForPad
+from .tf_data_process import DataProcessorForPad
 
 
 class DatasetMultiPad(Dataset):

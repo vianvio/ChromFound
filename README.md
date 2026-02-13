@@ -66,6 +66,99 @@ python -m src/cell_embedding \
 ```
 For an interactive walkthrough and examples, see the tutorial notebook `cell_embedding.ipynb`.
 
+### Enhanced Fine-tuning with Advanced Techniques
+
+The ChromFound model now supports advanced fine-tuning techniques:
+
+#### 1. Parameter-Efficient Fine-tuning (LoRA)
+Fine-tune the model using Low-Rank Adaptation to significantly reduce computational requirements:
+
+```bash
+python src/cell_type_annotation.py \
+    --train_file_path sample_data/train.h5ad \
+    --test_file_path sample_data/test.h5ad \
+    --pretrain_checkpoint_path src/checkpoints \
+    --pretrain_model_file model.pt \
+    --pretrain_config_file chromfd_pretrain.yaml \
+    --cell_type_col celltype \
+    --learning_rate 1e-4 \
+    --epoch 10 \
+    --batch_size 16 \
+    --log_path ./logs \
+    --use_lora \
+    --lora_rank 16 \
+    --lora_alpha 32 \
+    --lora_dropout 0.05
+```
+
+#### 2. Dynamic Learning Rate Scheduling with Adaptive Weight Decay
+Use adaptive learning rate and weight decay scheduling:
+
+```bash
+python src/cell_type_annotation.py \
+    --train_file_path sample_data/train.h5ad \
+    --test_file_path sample_data/test.h5ad \
+    --pretrain_checkpoint_path src/checkpoints \
+    --pretrain_model_file model.pt \
+    --pretrain_config_file chromfd_pretrain.yaml \
+    --cell_type_col celltype \
+    --learning_rate 1e-4 \
+    --epoch 10 \
+    --batch_size 16 \
+    --log_path ./logs \
+    --use_dynamic_scheduler \
+    --warmup_steps 1000 \
+    --min_lr 1e-7 \
+    --initial_weight_decay 1e-2
+```
+
+#### 3. Contrastive Learning Enhancement
+Improve fine-tuning with contrastive learning loss:
+
+```bash
+python src/cell_type_annotation.py \
+    --train_file_path sample_data/train.h5ad \
+    --test_file_path sample_data/test.h5ad \
+    --pretrain_checkpoint_path src/checkpoints \
+    --pretrain_model_file model.pt \
+    --pretrain_config_file chromfd_pretrain.yaml \
+    --cell_type_col celltype \
+    --learning_rate 1e-4 \
+    --epoch 10 \
+    --batch_size 16 \
+    --log_path ./logs \
+    --use_contrastive_learning \
+    --temperature 0.07 \
+    --contrastive_weight 0.1
+```
+
+#### 4. Combined Advanced Techniques
+Use all three techniques together for optimal performance:
+
+```bash
+python src/cell_type_annotation.py \
+    --train_file_path sample_data/train.h5ad \
+    --test_file_path sample_data/test.h5ad \
+    --pretrain_checkpoint_path src/checkpoints \
+    --pretrain_model_file model.pt \
+    --pretrain_config_file chromfd_pretrain.yaml \
+    --cell_type_col celltype \
+    --learning_rate 1e-4 \
+    --epoch 10 \
+    --batch_size 16 \
+    --log_path ./logs \
+    --use_lora \
+    --lora_rank 16 \
+    --lora_alpha 32 \
+    --use_dynamic_scheduler \
+    --warmup_steps 1000 \
+    --use_contrastive_learning \
+    --temperature 0.07 \
+    --contrastive_weight 0.1
+```
+
+For detailed configuration options, see `chromfd_finetune_config.yaml`.
+
 ## Data Format
 
 ### Input Data Requirements

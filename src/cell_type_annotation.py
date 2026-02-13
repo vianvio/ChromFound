@@ -17,6 +17,8 @@ from src.data.dataset_ds import DatasetMultiPad
 from src.models.chromfd_mixer import PretrainModelMambaLM
 from src.utils.model_utils import ModelUtils
 from src.utils.tb_utils import setup_logging
+from src.utils.lora_utils import inject_lora_to_model, set_lora_requires_grad, count_lora_params
+from src.utils.optimization_utils import DynamicLRScheduler, ContrastiveLoss, CombinedLoss
 
 
 def warmup_lambda(current_step, warmup_steps=1000):
@@ -91,17 +93,34 @@ class FinetuneModelMambaCellType(PretrainModelMambaLM):
         )
         self.ft_cell_type_projection.apply(init_weight)
 
+        # Additional projection for contrastive learning
+        self.contrastive_projection = torch.nn.Sequential(
+            torch.nn.Linear(in_feature, 256),
+            torch.nn.ReLU(),
+            torch.nn.Linear(256, 128)
+        )
+        self.contrastive_projection.apply(init_weight)
+
         for name, param in self.mask_token_prediction.named_parameters():
             param.requires_grad = False
 
-    def forward(self, value, chromosome, hg38_start, hg38_end, **kwargs):
+    def forward(self, value, chromosome, hg38_start, hg38_end, return_contrastive_emb=False, **kwargs):
         x = self.embedding(value, chromosome.long(), hg38_start.long(), hg38_end.long())
         x = self.backbone(x)
         x = self.feature_projection(x)
         x = torch.squeeze(x, dim=-1)
         x = self.post_backbone_dropout(x)
+        
+        # Cell type prediction
         x_cell_type_prediction = self.ft_cell_type_projection(x)
-        return x_cell_type_prediction
+        
+        if return_contrastive_emb:
+            # Generate contrastive embeddings
+            contrastive_emb = self.contrastive_projection(x)
+            contrastive_emb = torch.nn.functional.normalize(contrastive_emb, p=2, dim=1)
+            return x_cell_type_prediction, contrastive_emb
+        else:
+            return x_cell_type_prediction
 
 
 def evaluate_finetune_model(model, val_dataloader, criterion, device):
@@ -121,7 +140,14 @@ def evaluate_finetune_model(model, val_dataloader, criterion, device):
             cell_type_gpu = cell_type.to(device)
             pos_start = pos_start.to(device)
             pos_end = pos_end.to(device)
-            cell_type_output = model(value, chromosome, pos_start, pos_end)
+            
+            # Handle both old and new model outputs
+            output = model(value, chromosome, pos_start, pos_end)
+            if isinstance(output, tuple):
+                cell_type_output, _ = output  # Extract just the classification output
+            else:
+                cell_type_output = output
+            
             tmp_loss_cell_type_prediction = criterion(cell_type_output, cell_type_gpu)
             cell_type_pred = torch.argmax(cell_type_output, dim=-1)
 
@@ -162,9 +188,47 @@ def cell_type_finetune(
         logger
 ):
     model = model.to(device)
-    cell_type_criterion = FocalLoss(alpha=1, gamma=2, reduction='mean')
+    
+    # Determine if we're using contrastive learning
+    use_contrastive = finetune_args.get("use_contrastive_learning", False)
+    contrastive_weight = finetune_args.get("contrastive_weight", 0.1)
+    
+    if use_contrastive:
+        combined_criterion = CombinedLoss(
+            alpha=finetune_args.get("focal_alpha", 1.0),
+            gamma=finetune_args.get("focal_gamma", 2.0),
+            temperature=finetune_args.get("temperature", 0.07),
+            contrastive_weight=contrastive_weight,
+            focal_weight=1.0
+        )
+        cell_type_criterion = combined_criterion
+    else:
+        cell_type_criterion = FocalLoss(
+            alpha=finetune_args.get("focal_alpha", 1.0),
+            gamma=finetune_args.get("focal_gamma", 2.0),
+            reduction='mean'
+        )
+    
     step = 0
     best_f1_score = 0.0
+    total_steps = len(train_dataloader) * finetune_args.get("epoch")
+    warmup_steps = finetune_args.get("warmup_steps", min(1000, total_steps // 10))
+    
+    # Replace the static scheduler with dynamic one if enabled
+    use_dynamic_scheduler = finetune_args.get("use_dynamic_scheduler", False)
+    if use_dynamic_scheduler:
+        # Create a new optimizer with the same parameters for the dynamic scheduler
+        dynamic_scheduler = DynamicLRScheduler(
+            optimizer,
+            warmup_steps=warmup_steps,
+            total_steps=total_steps,
+            min_lr=finetune_args.get("min_lr", 1e-7),
+            initial_weight_decay=finetune_args.get("initial_weight_decay", 1e-2),
+            target_decay_range=finetune_args.get("target_decay_range", (1e-6, 1e-2))
+        )
+    else:
+        dynamic_scheduler = None
+    
     for eph in range(finetune_args.get("epoch")):
         for batch in train_dataloader:
             model.train()
@@ -174,33 +238,55 @@ def cell_type_finetune(
             pos_start = pos_start.to(device)
             pos_end = pos_end.to(device)
             cell_type = cell_type.to(device)
-            cell_type_output = model(value, chromosome, pos_start, pos_end)
-            # Compute Focal Loss
-            loss_cell_type_prediction = cell_type_criterion(cell_type_output, cell_type)
+            
+            # Forward pass - handle contrastive learning if enabled
+            if use_contrastive:
+                cell_type_output, contrastive_emb = model(value, chromosome, pos_start, pos_end, return_contrastive_emb=True)
+                # Compute combined loss
+                loss_cell_type_prediction = cell_type_criterion(cell_type_output, cell_type, contrastive_emb)
+            else:
+                cell_type_output = model(value, chromosome, pos_start, pos_end)
+                # Compute Focal Loss
+                loss_cell_type_prediction = cell_type_criterion(cell_type_output, cell_type)
+            
             loss_cell_type_prediction.backward()
             optimizer.step()
+            
+            # Update scheduler - use dynamic scheduler if enabled
+            if dynamic_scheduler:
+                dynamic_scheduler.step(model)
+            else:
+                lr_scheduler.step()
+                
             optimizer.zero_grad()
-            lr_scheduler.step()
+            
             if step % finetune_args.get("loss_evaluate", 10) == 0:
                 accuracy = torch.sum(torch.argmax(cell_type_output, dim=-1) == cell_type).item() / cell_type.size(0)
+                current_lr = optimizer.param_groups[0]['lr']
+                current_wd = optimizer.param_groups[0].get('weight_decay', 0)
+                
                 logger.info(
                     f"[Train] loss at epoch {eph} step {step}: {loss_cell_type_prediction.item()}, "
-                    f"accuracy: {accuracy:.4f}, lr: {optimizer.param_groups[0]['lr']}"
+                    f"accuracy: {accuracy:.4f}, lr: {current_lr:.6f}, wd: {current_wd:.6f}"
                 )
             if step % finetune_args.get("val_evaluate", 10) == 0:
                 eval_loss, eval_f1_score, eval_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
-                    evaluate_finetune_model(model, val_dataloader, cell_type_criterion, device)
+                    evaluate_finetune_model(model, val_dataloader, cell_type_criterion if not use_contrastive else FocalLoss(alpha=1, gamma=2), device)
                 test_loss, test_f1_score, test_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
-                    evaluate_finetune_model(model, test_dataloader, cell_type_criterion, device)
+                    evaluate_finetune_model(model, test_dataloader, cell_type_criterion if not use_contrastive else FocalLoss(alpha=1, gamma=2), device)
+                
+                current_lr = optimizer.param_groups[0]['lr']
+                current_wd = optimizer.param_groups[0].get('weight_decay', 0)
+                
                 logger.info(
                     f"[Evaluate] loss at epoch {eph} step {step}: {eval_loss}, "
                     f"cell type accuracy: {eval_accuracy:.4f}, f1 score: {eval_f1_score:.4f}, "
-                    f"lr: {optimizer.param_groups[0]['lr']:.6f}"
+                    f"lr: {current_lr:.6f}, wd: {current_wd:.6f}"
                 )
                 logger.info(
                     f"[Test] loss at epoch {eph} step {step}: {test_loss}, "
                     f"cell type accuracy: {test_accuracy:.4f}, f1 score: {test_f1_score:.4f}, "
-                    f"lr: {optimizer.param_groups[0]['lr']:.6f}"
+                    f"lr: {current_lr:.6f}, wd: {current_wd:.6f}"
                 )
                 if eval_f1_score > best_f1_score:
                     best_f1_score = eval_f1_score
@@ -230,6 +316,22 @@ def main_finetune():
     parser.add_argument("--test_file_path", type=str, required=True, help="validation file path")
     parser.add_argument("--log_path", type=str, required=True, help="log path")
     parser.add_argument("--load_pretrain_ckpt", action="store_true", default=True, help="load pre-trained model")
+    # LoRA parameters
+    parser.add_argument("--use_lora", action="store_true", help="Use Low-Rank Adaptation for fine-tuning")
+    parser.add_argument("--lora_rank", type=int, default=16, help="Rank for LoRA adaptation")
+    parser.add_argument("--lora_alpha", type=int, default=32, help="Alpha parameter for LoRA scaling")
+    parser.add_argument("--lora_dropout", type=float, default=0.05, help="Dropout rate for LoRA layers")
+    # Dynamic learning rate parameters
+    parser.add_argument("--use_dynamic_scheduler", action="store_true", help="Use dynamic learning rate scheduler")
+    parser.add_argument("--warmup_steps", type=int, default=1000, help="Number of warmup steps")
+    parser.add_argument("--min_lr", type=float, default=1e-7, help="Minimum learning rate")
+    parser.add_argument("--initial_weight_decay", type=float, default=1e-2, help="Initial weight decay")
+    # Contrastive learning parameters
+    parser.add_argument("--use_contrastive_learning", action="store_true", help="Use contrastive learning loss")
+    parser.add_argument("--temperature", type=float, default=0.07, help="Temperature for contrastive loss")
+    parser.add_argument("--contrastive_weight", type=float, default=0.1, help="Weight for contrastive loss component")
+    parser.add_argument("--focal_alpha", type=float, default=1.0, help="Alpha parameter for focal loss")
+    parser.add_argument("--focal_gamma", type=float, default=2.0, help="Gamma parameter for focal loss")
     args = parser.parse_args()
 
     with open(os.path.join(args.pretrain_checkpoint_path, args.pretrain_config_file), 'r') as file:
@@ -313,16 +415,43 @@ def main_finetune():
     )
 
     model = FinetuneModelMambaCellType(**pretrain_model_args)
+    
+    # Apply LoRA if enabled
+    if args.use_lora:
+        finetune_logger.info("Applying LoRA to the model...")
+        model = inject_lora_to_model(
+            model, 
+            target_modules=["Linear"], 
+            rank=args.lora_rank, 
+            alpha=args.lora_alpha, 
+            dropout=args.lora_dropout
+        )
+        # Only train LoRA parameters
+        set_lora_requires_grad(model, requires_grad=True)
+        finetune_logger.info(f"LoRA applied. Number of LoRA parameters: {count_lora_params(model)}")
+    else:
+        finetune_logger.info("Not using LoRA. Training all parameters.")
+    
     model = model.to(device)
     finetune_logger.info(f'Model parameters: {model}')
+    
+    # Setup optimizer - only include parameters that require gradients
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
     optimizer_params = {
         "lr": args.learning_rate,
         "betas": (0.8, 0.999),
         "eps": 1e-8,
         "weight_decay": 1e-6
     }
-    optimizer = torch.optim.AdamW(model.parameters(), **optimizer_params)
-    lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_lambda(step, 200))
+    optimizer = torch.optim.AdamW(trainable_params, **optimizer_params)
+    
+    # Setup learning rate scheduler
+    if args.use_dynamic_scheduler:
+        # Dynamic scheduler will be handled inside the training loop
+        lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: 1.0)  # Placeholder
+    else:
+        lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_lambda(step, args.warmup_steps))
+    
     if args.load_pretrain_ckpt:
         state_dict = torch.load(str(os.path.join(args.pretrain_checkpoint_path, args.pretrain_model_file)))
         missing_keys, unexpected_keys = model.load_state_dict(state_dict['module'], strict=False)
@@ -343,6 +472,16 @@ def main_finetune():
         "val_evaluate": 20,
         "log_path": log_path,
         "epoch": args.epoch,
+        "use_contrastive_learning": args.use_contrastive_learning,
+        "contrastive_weight": args.contrastive_weight,
+        "temperature": args.temperature,
+        "focal_alpha": args.focal_alpha,
+        "focal_gamma": args.focal_gamma,
+        "use_dynamic_scheduler": args.use_dynamic_scheduler,
+        "warmup_steps": args.warmup_steps,
+        "min_lr": args.min_lr,
+        "initial_weight_decay": args.initial_weight_decay,
+        "target_decay_range": (1e-6, 1e-2),
     }
     cell_type_finetune(
         model,

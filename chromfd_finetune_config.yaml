@@ -1,0 +1,56 @@
+# Enhanced ChromFound Fine-tuning Configuration
+# This configuration includes options for LoRA, dynamic learning rate scheduling, and contrastive learning
+
+model_args:
+  embedding_dim: 2560
+  chromosome_size: 25
+  embedding_dropout: 0.1
+  positional_embedding_type: "sinusoidal"
+  positional_temp: 10000
+  batch_size: 16
+  max_length: 1000
+  encoder_layers: 64
+  wpsa_heads: 8
+  wpsa_window_size: 32
+  shift_size: 16
+  cell_type_num: 10  # This will be dynamically set based on data
+  device: "cuda:0"
+  mask_ratio: 0.0
+  value_size: 1
+
+data_args:
+  cell_type_col: "celltype"
+  feature_num: 100000  # This will be dynamically set based on data
+  max_length: 1000     # This will be dynamically set based on data
+  return_batch_label: False
+  add_cls: False
+  mask_ratio: 0.0
+
+# Fine-tuning specific configurations
+finetune_args:
+  # LoRA settings
+  use_lora: true
+  lora_rank: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  
+  # Dynamic learning rate scheduling
+  use_dynamic_scheduler: true
+  warmup_steps: 1000
+  min_lr: 1.0e-07
+  initial_weight_decay: 0.01
+  target_decay_range: [1e-6, 1e-2]
+  
+  # Contrastive learning settings
+  use_contrastive_learning: true
+  temperature: 0.07
+  contrastive_weight: 0.1
+  focal_alpha: 1.0
+  focal_gamma: 2.0
+  
+  # Training settings
+  epoch: 10
+  batch_size: 16
+  learning_rate: 1.0e-04
+  loss_evaluate: 20
+  val_evaluate: 20

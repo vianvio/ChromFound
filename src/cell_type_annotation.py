@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import yaml
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import f1_score
-from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR
 from torch.utils.data import DataLoader
 
 from src.data.dataset_ds import DatasetMultiPad
@@ -178,6 +178,10 @@ def cell_type_finetune(
             # Compute Focal Loss
             loss_cell_type_prediction = cell_type_criterion(cell_type_output, cell_type)
             loss_cell_type_prediction.backward()
+            
+            # Apply gradient clipping to prevent exploding gradients
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            
             optimizer.step()
             optimizer.zero_grad()
             lr_scheduler.step()
@@ -322,7 +326,10 @@ def main_finetune():
         "weight_decay": 1e-6
     }
     optimizer = torch.optim.AdamW(model.parameters(), **optimizer_params)
-    lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_lambda(step, 200))
+    
+    # Calculate total steps for cosine annealing scheduler
+    total_steps = len(train_dataloader) * args.epoch
+    lr_scheduler = CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=1e-7)
     if args.load_pretrain_ckpt:
         state_dict = torch.load(str(os.path.join(args.pretrain_checkpoint_path, args.pretrain_model_file)))
         missing_keys, unexpected_keys = model.load_state_dict(state_dict['module'], strict=False)

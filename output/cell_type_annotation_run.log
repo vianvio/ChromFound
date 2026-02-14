@@ -1,0 +1,164 @@
+/root/2022615899803213824/src/cell_type_annotation.py:274: FutureWarning: Use anndata.concat instead of AnnData.concatenate, AnnData.concatenate is deprecated and will be removed in the future. See the tutorial for concat at: https://anndata.readthedocs.io/en/latest/concatenation.html
+  adata_concat = sc.AnnData.concatenate(adata_train_val, adata_test, join='outer')
+2026-02-14 10:21:55,874 - INFO - PretrainLogger is configured and ready.
+2026-02-14 10:21:55,878 - INFO - args from parser: Namespace(local_rank=0, batch_size=8, learning_rate=0.0003, pretrain_checkpoint_path='checkpoints', pretrain_model_file='model.pt', pretrain_config_file='chromfd_pretrain.yaml', cell_type_col='celltype', epoch=5, train_file_path='src/sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad', test_file_path='src/sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad', log_path='baseline/idea/idea-1/cell_type_annotation', load_pretrain_ckpt=True, grad_clip_value=1.0)
+2026-02-14 10:21:55,878 - INFO - max length for cell type finetune: 1000
+2026-02-14 10:21:56,572 - INFO - Model parameters: FinetuneModelMambaCellType(
+  (embedding): PretrainEmbeddingSimple(
+    (value_embedding): ValueEmbedding(
+      (embedding): Linear(in_features=1, out_features=128, bias=True)
+    )
+    (chromosome_embedding): Embedding(25, 128)
+    (position_embedding): PositionalEmbeddingWithDnaPosition()
+    (dropout): Dropout(p=0.1, inplace=False)
+  )
+  (backbone): MambaMixer(
+    (layers): ModuleList(
+      (0-3): 4 x Block(
+        (norm): RMSNorm()
+        (mixer): Mamba(
+          (in_proj): Linear(in_features=32, out_features=128, bias=False)
+          (conv1d): Conv1d(64, 64, kernel_size=(4,), stride=(1,), padding=(3,), groups=64)
+          (act): SiLU()
+          (x_proj): Linear(in_features=64, out_features=34, bias=False)
+          (dt_proj): Linear(in_features=2, out_features=64, bias=True)
+          (out_proj): Linear(in_features=64, out_features=32, bias=False)
+        )
+        (reduction_layer): Linear(in_features=128, out_features=32, bias=True)
+        (expansion_layer): Linear(in_features=32, out_features=128, bias=True)
+        (chromfound_block): ChromFoundTransformerBlock(
+          (norm1): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+          (attn): WindowAttention1D(
+            (qkv): Linear(in_features=128, out_features=384, bias=True)
+            (attn_drop): Dropout(p=0.0, inplace=False)
+            (proj): Linear(in_features=128, out_features=128, bias=True)
+            (proj_drop): Dropout(p=0.0, inplace=False)
+          )
+          (drop_path): Identity()
+          (norm2): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+          (mlp): Mlp(
+            (fc1): Linear(in_features=128, out_features=128, bias=True)
+            (act): GELU(approximate='none')
+            (fc2): Linear(in_features=128, out_features=128, bias=True)
+            (drop): Dropout(p=0.0, inplace=False)
+          )
+        )
+      )
+    )
+    (norm_f): RMSNorm()
+  )
+  (mask_token_prediction): MaskTokenPrediction(
+    (projection): Linear(in_features=128, out_features=1, bias=True)
+  )
+  (post_backbone_dropout): Dropout(p=0.3, inplace=False)
+  (feature_projection): Sequential(
+    (0): Linear(in_features=128, out_features=256, bias=True)
+    (1): GELU(approximate='none')
+    (2): Dropout(p=0.3, inplace=False)
+    (3): Linear(in_features=256, out_features=1, bias=True)
+    (4): GELU(approximate='none')
+  )
+  (ft_cell_type_projection): Sequential(
+    (0): Linear(in_features=1000, out_features=1024, bias=True)
+    (1): GELU(approximate='none')
+    (2): Dropout(p=0.3, inplace=False)
+    (3): Linear(in_features=1024, out_features=512, bias=True)
+    (4): GELU(approximate='none')
+    (5): Dropout(p=0.3, inplace=False)
+    (6): Linear(in_features=512, out_features=128, bias=True)
+    (7): GELU(approximate='none')
+    (8): Dropout(p=0.3, inplace=False)
+    (9): Linear(in_features=128, out_features=5, bias=True)
+  )
+)
+/root/2022615899803213824/src/cell_type_annotation.py:369: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state_dict = torch.load(str(os.path.join(args.pretrain_checkpoint_path, args.pretrain_model_file)))
+2026-02-14 10:22:00,192 - INFO - [Train] loss at epoch 0 step 0: 1.2399587631225586, accuracy: 0.2500, lr: 1.4999999999999998e-06
+2026-02-14 10:22:00,945 - INFO - [Evaluate] loss at epoch 0 step 0: 1.0194300413131714, cell type accuracy: 0.2625, f1 score: 0.1358, lr: 0.000001
+2026-02-14 10:22:00,945 - INFO - [Test] loss at epoch 0 step 0: 1.040043592453003, cell type accuracy: 0.1800, f1 score: 0.0958, lr: 0.000001
+2026-02-14 10:22:00,951 - INFO - [Test] best validation f1_score: 0.1358 at epoch 0 step 0, test accuracy: 0.1800, f1_score: 0.0958
+2026-02-14 10:22:01,607 - INFO - [Train] loss at epoch 0 step 20: 1.559138536453247, accuracy: 0.0000, lr: 3.149999999999999e-05
+2026-02-14 10:22:02,346 - INFO - [Evaluate] loss at epoch 0 step 20: 1.0072612762451172, cell type accuracy: 0.2500, f1 score: 0.1312, lr: 0.000031
+2026-02-14 10:22:02,346 - INFO - [Test] loss at epoch 0 step 20: 1.03351628780365, cell type accuracy: 0.2150, f1 score: 0.0886, lr: 0.000031
+2026-02-14 10:22:02,968 - INFO - [Train] loss at epoch 0 step 40: 1.0129194259643555, accuracy: 0.2500, lr: 6.149999999999999e-05
+2026-02-14 10:22:03,707 - INFO - [Evaluate] loss at epoch 0 step 40: 1.003959059715271, cell type accuracy: 0.2625, f1 score: 0.0832, lr: 0.000061
+2026-02-14 10:22:03,707 - INFO - [Test] loss at epoch 0 step 40: 1.0261006355285645, cell type accuracy: 0.2200, f1 score: 0.0894, lr: 0.000061
+2026-02-14 10:22:04,330 - INFO - [Train] loss at epoch 0 step 60: 1.0676469802856445, accuracy: 0.1250, lr: 9.149999999999999e-05
+2026-02-14 10:22:05,067 - INFO - [Evaluate] loss at epoch 0 step 60: 1.026711344718933, cell type accuracy: 0.2500, f1 score: 0.1378, lr: 0.000091
+2026-02-14 10:22:05,067 - INFO - [Test] loss at epoch 0 step 60: 1.0297189950942993, cell type accuracy: 0.1600, f1 score: 0.0908, lr: 0.000091
+2026-02-14 10:22:05,071 - INFO - [Test] best validation f1_score: 0.1378 at epoch 0 step 60, test accuracy: 0.1600, f1_score: 0.0908
+2026-02-14 10:22:05,713 - INFO - [Train] loss at epoch 0 step 80: 1.042989730834961, accuracy: 0.1250, lr: 0.0001215
+2026-02-14 10:22:06,450 - INFO - [Evaluate] loss at epoch 0 step 80: 1.0444246530532837, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000121
+2026-02-14 10:22:06,450 - INFO - [Test] loss at epoch 0 step 80: 1.037548303604126, cell type accuracy: 0.1750, f1 score: 0.0596, lr: 0.000121
+2026-02-14 10:22:07,096 - INFO - [Train] loss at epoch 1 step 100: 1.0608476400375366, accuracy: 0.2500, lr: 0.0001515
+2026-02-14 10:22:07,836 - INFO - [Evaluate] loss at epoch 1 step 100: 1.0182454586029053, cell type accuracy: 0.2000, f1 score: 0.0667, lr: 0.000151
+2026-02-14 10:22:07,836 - INFO - [Test] loss at epoch 1 step 100: 1.027657151222229, cell type accuracy: 0.2200, f1 score: 0.0826, lr: 0.000151
+2026-02-14 10:22:08,453 - INFO - [Train] loss at epoch 1 step 120: 1.0220850706100464, accuracy: 0.2500, lr: 0.00018149999999999997
+2026-02-14 10:22:09,189 - INFO - [Evaluate] loss at epoch 1 step 120: 1.0453166961669922, cell type accuracy: 0.0625, f1 score: 0.0235, lr: 0.000181
+2026-02-14 10:22:09,189 - INFO - [Test] loss at epoch 1 step 120: 1.0302460193634033, cell type accuracy: 0.2050, f1 score: 0.0989, lr: 0.000181
+2026-02-14 10:22:09,809 - INFO - [Train] loss at epoch 1 step 140: 1.2225258350372314, accuracy: 0.1250, lr: 0.00021149999999999996
+2026-02-14 10:22:10,548 - INFO - [Evaluate] loss at epoch 1 step 140: 1.049622893333435, cell type accuracy: 0.2625, f1 score: 0.0832, lr: 0.000211
+2026-02-14 10:22:10,548 - INFO - [Test] loss at epoch 1 step 140: 1.048000693321228, cell type accuracy: 0.2100, f1 score: 0.0697, lr: 0.000211
+2026-02-14 10:22:11,167 - INFO - [Train] loss at epoch 1 step 160: 1.030968189239502, accuracy: 0.1250, lr: 0.0002415
+2026-02-14 10:22:11,902 - INFO - [Evaluate] loss at epoch 1 step 160: 1.0322524309158325, cell type accuracy: 0.1875, f1 score: 0.0632, lr: 0.000241
+2026-02-14 10:22:11,902 - INFO - [Test] loss at epoch 1 step 160: 1.0319169759750366, cell type accuracy: 0.1900, f1 score: 0.0846, lr: 0.000241
+2026-02-14 10:22:12,545 - INFO - [Train] loss at epoch 2 step 180: 1.0273865461349487, accuracy: 0.3750, lr: 0.0002715
+2026-02-14 10:22:13,286 - INFO - [Evaluate] loss at epoch 2 step 180: 1.0301560163497925, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000271
+2026-02-14 10:22:13,286 - INFO - [Test] loss at epoch 2 step 180: 1.031367301940918, cell type accuracy: 0.1750, f1 score: 0.0596, lr: 0.000271
+2026-02-14 10:22:13,905 - INFO - [Train] loss at epoch 2 step 200: 1.0200560092926025, accuracy: 0.0000, lr: 0.00029998934096751514
+2026-02-14 10:22:14,641 - INFO - [Evaluate] loss at epoch 2 step 200: 1.0315319299697876, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000300
+2026-02-14 10:22:14,641 - INFO - [Test] loss at epoch 2 step 200: 1.0311528444290161, cell type accuracy: 0.1750, f1 score: 0.0596, lr: 0.000300
+2026-02-14 10:22:15,257 - INFO - [Train] loss at epoch 2 step 220: 1.0242401361465454, accuracy: 0.3750, lr: 0.00029532652124249193
+2026-02-14 10:22:15,991 - INFO - [Evaluate] loss at epoch 2 step 220: 1.0330133438110352, cell type accuracy: 0.1875, f1 score: 0.0632, lr: 0.000295
+2026-02-14 10:22:15,991 - INFO - [Test] loss at epoch 2 step 220: 1.0321918725967407, cell type accuracy: 0.1750, f1 score: 0.0596, lr: 0.000295
+2026-02-14 10:22:16,608 - INFO - [Train] loss at epoch 2 step 240: 1.0291591882705688, accuracy: 0.1250, lr: 0.0002824748068803859
+2026-02-14 10:22:17,342 - INFO - [Evaluate] loss at epoch 2 step 240: 1.032160997390747, cell type accuracy: 0.1875, f1 score: 0.0632, lr: 0.000282
+2026-02-14 10:22:17,342 - INFO - [Test] loss at epoch 2 step 240: 1.0315494537353516, cell type accuracy: 0.1750, f1 score: 0.0596, lr: 0.000282
+2026-02-14 10:22:18,179 - INFO - [Train] loss at epoch 2 step 260: 1.038663387298584, accuracy: 0.1250, lr: 0.0002622417183598674
+2026-02-14 10:22:18,915 - INFO - [Evaluate] loss at epoch 2 step 260: 1.0327328443527222, cell type accuracy: 0.1875, f1 score: 0.0632, lr: 0.000262
+2026-02-14 10:22:18,915 - INFO - [Test] loss at epoch 2 step 260: 1.032022476196289, cell type accuracy: 0.1750, f1 score: 0.0596, lr: 0.000262
+2026-02-14 10:22:19,562 - INFO - [Train] loss at epoch 3 step 280: 1.0496633052825928, accuracy: 0.2500, lr: 0.00023589857504477494
+2026-02-14 10:22:20,299 - INFO - [Evaluate] loss at epoch 3 step 280: 1.0263925790786743, cell type accuracy: 0.2625, f1 score: 0.0832, lr: 0.000236
+2026-02-14 10:22:20,299 - INFO - [Test] loss at epoch 3 step 280: 1.0333799123764038, cell type accuracy: 0.1950, f1 score: 0.1090, lr: 0.000236
+2026-02-14 10:22:20,918 - INFO - [Train] loss at epoch 3 step 300: 1.0262579917907715, accuracy: 0.2500, lr: 0.0002051006135128997
+2026-02-14 10:22:21,661 - INFO - [Evaluate] loss at epoch 3 step 300: 1.0267364978790283, cell type accuracy: 0.2625, f1 score: 0.0832, lr: 0.000205
+2026-02-14 10:22:21,661 - INFO - [Test] loss at epoch 3 step 300: 1.0327924489974976, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000205
+2026-02-14 10:22:22,284 - INFO - [Train] loss at epoch 3 step 320: 1.0201579332351685, accuracy: 0.1250, lr: 0.00017178298295426889
+2026-02-14 10:22:23,025 - INFO - [Evaluate] loss at epoch 3 step 320: 1.0266691446304321, cell type accuracy: 0.2625, f1 score: 0.0832, lr: 0.000172
+2026-02-14 10:22:23,025 - INFO - [Test] loss at epoch 3 step 320: 1.0330479145050049, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000172
+2026-02-14 10:22:23,645 - INFO - [Train] loss at epoch 3 step 340: 1.0146982669830322, accuracy: 0.2500, lr: 0.00013803915263055507
+2026-02-14 10:22:24,382 - INFO - [Evaluate] loss at epoch 3 step 340: 1.0269508361816406, cell type accuracy: 0.2625, f1 score: 0.0832, lr: 0.000138
+2026-02-14 10:22:24,382 - INFO - [Test] loss at epoch 3 step 340: 1.0332087278366089, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000138
+2026-02-14 10:22:25,025 - INFO - [Train] loss at epoch 4 step 360: 1.0498722791671753, accuracy: 0.1250, lr: 0.0001059893715021241
+2026-02-14 10:22:25,759 - INFO - [Evaluate] loss at epoch 4 step 360: 1.028521180152893, cell type accuracy: 0.2625, f1 score: 0.0832, lr: 0.000106
+2026-02-14 10:22:25,759 - INFO - [Test] loss at epoch 4 step 360: 1.0337035655975342, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000106
+2026-02-14 10:22:26,378 - INFO - [Train] loss at epoch 4 step 380: 1.056614637374878, accuracy: 0.0000, lr: 7.764744518812505e-05
+2026-02-14 10:22:27,110 - INFO - [Evaluate] loss at epoch 4 step 380: 1.026761770248413, cell type accuracy: 0.2625, f1 score: 0.0832, lr: 0.000078
+2026-02-14 10:22:27,110 - INFO - [Test] loss at epoch 4 step 380: 1.0340170860290527, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000078
+2026-02-14 10:22:27,729 - INFO - [Train] loss at epoch 4 step 400: 1.0409200191497803, accuracy: 0.1250, lr: 5.479420115318016e-05
+2026-02-14 10:22:28,465 - INFO - [Evaluate] loss at epoch 4 step 400: 1.0272988080978394, cell type accuracy: 0.2625, f1 score: 0.0832, lr: 0.000055
+2026-02-14 10:22:28,465 - INFO - [Test] loss at epoch 4 step 400: 1.0338903665542603, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000055
+2026-02-14 10:22:29,081 - INFO - [Train] loss at epoch 4 step 420: 1.029250144958496, accuracy: 0.1250, lr: 3.886559276835738e-05
+2026-02-14 10:22:29,819 - INFO - [Evaluate] loss at epoch 4 step 420: 1.027631402015686, cell type accuracy: 0.2625, f1 score: 0.0832, lr: 0.000039
+2026-02-14 10:22:29,820 - INFO - [Test] loss at epoch 4 step 420: 1.0340889692306519, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000039
+2026-02-14 10:22:30,436 - INFO - [Train] loss at epoch 4 step 440: 1.0304555892944336, accuracy: 0.1250, lr: 3.086247307979886e-05
+2026-02-14 10:22:31,171 - INFO - [Evaluate] loss at epoch 4 step 440: 1.0281754732131958, cell type accuracy: 0.2625, f1 score: 0.0832, lr: 0.000031
+2026-02-14 10:22:31,171 - INFO - [Test] loss at epoch 4 step 440: 1.0339820384979248, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000031
+Reading h5ad file from src/sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad
+Reading h5ad file from src/sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad
+Train Dataset Length: 720
+Validation Dataset Length: 80
+Test Dataset Length: 200
+Missing keys (not found in checkpoint):
+  feature_projection.0.weight
+  feature_projection.0.bias
+  feature_projection.3.weight
+  feature_projection.3.bias
+  ft_cell_type_projection.0.weight
+  ft_cell_type_projection.0.bias
+  ft_cell_type_projection.3.weight
+  ft_cell_type_projection.3.bias
+  ft_cell_type_projection.6.weight
+  ft_cell_type_projection.6.bias
+  ft_cell_type_projection.9.weight
+  ft_cell_type_projection.9.bias

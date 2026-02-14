@@ -264,11 +264,23 @@ def main_finetune():
     adata_train_val = load_data(args.train_file_path)
     adata_test = load_data(args.test_file_path)
 
+    # Store the var attributes to ensure they're preserved after concatenation and slicing
+    train_var = adata_train_val.var.copy()
+    test_var = adata_test.var.copy()  # Store test var as well
+    
     adata_train_val.obs["tag"] = "train"
     adata_test.obs["tag"] = "test"
-    adata_concat = sc.AnnData.concatenate(adata_train_val, adata_test)
+    
+    adata_concat = sc.AnnData.concatenate(adata_train_val, adata_test, join='outer')
+    
+    # Extract train and test subsets
     adata_train_val = adata_concat[adata_concat.obs["tag"] == "train"]
     adata_test = adata_concat[adata_concat.obs["tag"] == "test"]
+    
+    # Restore the var attributes after slicing since concatenation/slicing might lose them
+    adata_train_val.var = train_var
+    adata_test.var = test_var  # Use original test var to maintain consistency
+    
     max_length = adata_concat.shape[1]
 
     cell_type = list(set(adata_train_val.obs[args.cell_type_col].unique().tolist() + adata_test.obs[
@@ -303,6 +315,9 @@ def main_finetune():
     pretrain_model_args["mask_ratio"] = 0.0
     pretrain_data_args["return_batch_label"] = False
 
+    # Store the var attributes to preserve them after train/val split
+    train_val_var = adata_train_val.var.copy()
+    
     idx_list = [i for i in range(adata_train_val.X.shape[0])]
     random.shuffle(idx_list)
     split_idx = int(len(idx_list) * 0.9)
@@ -310,6 +325,10 @@ def main_finetune():
     val_idx = idx_list[split_idx:]
     adata_train = adata_train_val[train_idx]
     adata_val = adata_train_val[val_idx]
+    
+    # Restore var attributes after slicing
+    adata_train.var = train_val_var
+    adata_val.var = train_val_var
 
     train_dataset = DatasetMultiPad(*[adata_train], **pretrain_data_args)
     val_dataset = DatasetMultiPad(*[adata_val], **pretrain_data_args)

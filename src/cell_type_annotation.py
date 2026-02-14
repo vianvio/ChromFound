@@ -274,11 +274,26 @@ def main_finetune():
     adata_train_val = load_data(args.train_file_path)
     adata_test = load_data(args.test_file_path)
 
+    # Store the .var dataframe to preserve chromosome info after concatenation
+    var_df_train = adata_train_val.var.copy()
+    var_df_test = adata_test.var.copy()
+    
     adata_train_val.obs["tag"] = "train"
     adata_test.obs["tag"] = "test"
     adata_concat = sc.AnnData.concatenate(adata_train_val, adata_test)
-    adata_train_val = adata_concat[adata_concat.obs["tag"] == "train"]
-    adata_test = adata_concat[adata_concat.obs["tag"] == "test"]
+    
+    # Extract train/val/test sets after concatenation
+    adata_train_val_filtered = adata_concat[adata_concat.obs["tag"] == "train"]
+    adata_test_filtered = adata_concat[adata_concat.obs["tag"] == "test"]
+    
+    # Restore the .var dataframe to maintain chromosome information for each dataset
+    adata_train_val_filtered.var = var_df_train
+    adata_test_filtered.var = var_df_test
+    adata_concat.var = var_df_train  # Use train var as it should be the same
+    
+    # Update references
+    adata_train_val = adata_train_val_filtered
+    adata_test = adata_test_filtered
     max_length = adata_concat.shape[1]
 
     cell_type = list(set(adata_train_val.obs[args.cell_type_col].unique().tolist() + adata_test.obs[

@@ -303,72 +303,6 @@ def cell_type_finetune_progressive(
     logger.info(f"Progressive fine-tuning completed. Best F1 score achieved: {best_f1_score:.4f}")
 
 
-def cell_type_finetune(
-        model,
-        finetune_args,
-        train_dataloader,
-        val_dataloader,
-        test_dataloader,
-        optimizer,
-        lr_scheduler,
-        device,
-        logger
-):
-    model = model.to(device)
-    cell_type_criterion = FocalLoss(alpha=1, gamma=2, reduction='mean')
-    step = 0
-    best_f1_score = 0.0
-    for eph in range(finetune_args.get("epoch")):
-        for batch in train_dataloader:
-            model.train()
-            value, chromosome, pos_start, pos_end, cell_type = batch
-            value = value.to(device)
-            chromosome = chromosome.to(device)
-            pos_start = pos_start.to(device)
-            pos_end = pos_end.to(device)
-            cell_type = cell_type.to(device)
-            cell_type_output = model(value, chromosome, pos_start, pos_end)
-            # Compute Focal Loss
-            loss_cell_type_prediction = cell_type_criterion(cell_type_output, cell_type)
-            loss_cell_type_prediction.backward()
-            optimizer.step()
-            optimizer.zero_grad()
-            lr_scheduler.step()
-            if step % finetune_args.get("loss_evaluate", 10) == 0:
-                accuracy = torch.sum(torch.argmax(cell_type_output, dim=-1) == cell_type).item() / cell_type.size(0)
-                logger.info(
-                    f"[Train] loss at epoch {eph} step {step}: {loss_cell_type_prediction.item()}, "
-                    f"accuracy: {accuracy:.4f}, lr: {optimizer.param_groups[0]['lr']}"
-                )
-            if step % finetune_args.get("val_evaluate", 10) == 0:
-                eval_loss, eval_f1_score, eval_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
-                    evaluate_finetune_model(model, val_dataloader, cell_type_criterion, device)
-                test_loss, test_f1_score, test_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
-                    evaluate_finetune_model(model, test_dataloader, cell_type_criterion, device)
-                logger.info(
-                    f"[Evaluate] loss at epoch {eph} step {step}: {eval_loss}, "
-                    f"cell type accuracy: {eval_accuracy:.4f}, f1 score: {eval_f1_score:.4f}, "
-                    f"lr: {optimizer.param_groups[0]['lr']:.6f}"
-                )
-                logger.info(
-                    f"[Test] loss at epoch {eph} step {step}: {test_loss}, "
-                    f"cell type accuracy: {test_accuracy:.4f}, f1 score: {test_f1_score:.4f}, "
-                    f"lr: {optimizer.param_groups[0]['lr']:.6f}"
-                )
-                if eval_f1_score > best_f1_score:
-                    best_f1_score = eval_f1_score
-                    with open(os.path.join(
-                            finetune_args["log_path"], f"cell_type_label_pred.pkl"), "wb") as f:
-                        pickle.dump((eval_cell_type_label_list, eval_cell_type_pred_list), f)
-                    logger.info(
-                        f"[Test] best validation f1_score: {best_f1_score:.4f} at epoch {eph} step {step}, "
-                        f"test accuracy: {test_accuracy:.4f}, f1_score: {test_f1_score:.4f}"
-                    )
-                    torch.save(model.state_dict(), os.path.join(finetune_args["log_path"], "best_model.pt"))
-            step += 1
-        torch.save(model.state_dict(), os.path.join(finetune_args["log_path"], f"epoch_{eph}.pt"))
-
-
 def main_finetune():
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_rank", type=int, help='local rank passed from distributed launcher', default=0)
@@ -383,7 +317,7 @@ def main_finetune():
     parser.add_argument("--test_file_path", type=str, required=True, help="validation file path")
     parser.add_argument("--log_path", type=str, required=True, help="log path")
     parser.add_argument("--load_pretrain_ckpt", action="store_true", default=True, help="load pre-trained model")
-    parser.add_argument("--progressive_unfreezing", action="store_true", default=False, help="use progressive unfreezing strategy")
+    parser.add_argument("--progressive_unfreezing", action="store_true", default=True, help="use progressive unfreezing strategy")
     args = parser.parse_args()
 
     with open(os.path.join(args.pretrain_checkpoint_path, args.pretrain_config_file), 'r') as file:
@@ -469,14 +403,7 @@ def main_finetune():
     model = FinetuneModelMambaCellType(**pretrain_model_args)
     model = model.to(device)
     finetune_logger.info(f'Model parameters: {model}')
-    optimizer_params = {
-        "lr": args.learning_rate,
-        "betas": (0.8, 0.999),
-        "eps": 1e-8,
-        "weight_decay": 1e-6
-    }
-    optimizer = torch.optim.AdamW(model.parameters(), **optimizer_params)
-    lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_lambda(step, 200))
+    
     if args.load_pretrain_ckpt:
         state_dict = torch.load(str(os.path.join(args.pretrain_checkpoint_path, args.pretrain_model_file)))
         missing_keys, unexpected_keys = model.load_state_dict(state_dict['module'], strict=False)
@@ -511,17 +438,72 @@ def main_finetune():
             finetune_logger
         )
     else:
-        cell_type_finetune(
-            model,
-            finetune_config,
-            train_dataloader,
-            val_dataloader,
-            test_dataloader,
-            optimizer,
-            lr_scheduler,
-            device,
-            finetune_logger
-        )
+        # Original fine-tuning implementation (kept for compatibility)
+        from torch.optim.lr_scheduler import LambdaLR
+        from torch.optim import AdamW
+        
+        cell_type_criterion = FocalLoss(alpha=1, gamma=2, reduction='mean')
+        step = 0
+        best_f1_score = 0.0
+        
+        optimizer_params = {
+            "lr": args.learning_rate,
+            "betas": (0.8, 0.999),
+            "eps": 1e-8,
+            "weight_decay": 1e-6
+        }
+        optimizer = AdamW(model.parameters(), **optimizer_params)
+        lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_lambda(step, 200))
+        
+        for eph in range(finetune_config.get("epoch")):
+            for batch in train_dataloader:
+                model.train()
+                value, chromosome, pos_start, pos_end, cell_type = batch
+                value = value.to(device)
+                chromosome = chromosome.to(device)
+                pos_start = pos_start.to(device)
+                pos_end = pos_end.to(device)
+                cell_type = cell_type.to(device)
+                cell_type_output = model(value, chromosome, pos_start, pos_end)
+                # Compute Focal Loss
+                loss_cell_type_prediction = cell_type_criterion(cell_type_output, cell_type)
+                loss_cell_type_prediction.backward()
+                optimizer.step()
+                optimizer.zero_grad()
+                lr_scheduler.step()
+                if step % finetune_config.get("loss_evaluate", 10) == 0:
+                    accuracy = torch.sum(torch.argmax(cell_type_output, dim=-1) == cell_type).item() / cell_type.size(0)
+                    finetune_logger.info(
+                        f"[Train] loss at epoch {eph} step {step}: {loss_cell_type_prediction.item()}, "
+                        f"accuracy: {accuracy:.4f}, lr: {optimizer.param_groups[0]['lr']}"
+                    )
+                if step % finetune_config.get("val_evaluate", 10) == 0:
+                    eval_loss, eval_f1_score, eval_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
+                        evaluate_finetune_model(model, val_dataloader, cell_type_criterion, device)
+                    test_loss, test_f1_score, test_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
+                        evaluate_finetune_model(model, test_dataloader, cell_type_criterion, device)
+                    finetune_logger.info(
+                        f"[Evaluate] loss at epoch {eph} step {step}: {eval_loss}, "
+                        f"cell type accuracy: {eval_accuracy:.4f}, f1 score: {eval_f1_score:.4f}, "
+                        f"lr: {optimizer.param_groups[0]['lr']:.6f}"
+                    )
+                    finetune_logger.info(
+                        f"[Test] loss at epoch {eph} step {step}: {test_loss}, "
+                        f"cell type accuracy: {test_accuracy:.4f}, f1 score: {test_f1_score:.4f}, "
+                        f"lr: {optimizer.param_groups[0]['lr']:.6f}"
+                    )
+                    if eval_f1_score > best_f1_score:
+                        best_f1_score = eval_f1_score
+                        with open(os.path.join(
+                                finetune_config["log_path"], f"cell_type_label_pred.pkl"), "wb") as f:
+                            pickle.dump((eval_cell_type_label_list, eval_cell_type_pred_list), f)
+                        finetune_logger.info(
+                            f"[Test] best validation f1_score: {best_f1_score:.4f} at epoch {eph} step {step}, "
+                            f"test accuracy: {test_accuracy:.4f}, f1_score: {test_f1_score:.4f}"
+                        )
+                        torch.save(model.state_dict(), os.path.join(finetune_config["log_path"], "best_model.pt"))
+                step += 1
+            torch.save(model.state_dict(), os.path.join(finetune_config["log_path"], f"epoch_{eph}.pt"))
 
 
 if __name__ == '__main__':

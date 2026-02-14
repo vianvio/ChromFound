@@ -185,21 +185,23 @@ def get_layerwise_param_groups(model, base_lr, layer_decay=0.9):
     # Add remaining parameters (embedding, prediction head, etc.) with appropriate LRs
     embedding_params = []
     prediction_head_params = []
-    
+
+    # Collect IDs of parameters already added to layer groups
+    added_param_ids = set()
+    if hasattr(model, 'backbone') and hasattr(model.backbone, 'layers'):
+        for group in param_groups:
+            for param in group['params']:
+                added_param_ids.add(id(param))
+
     for name, param in model.named_parameters():
         # Check if this parameter is already included in layer groups
-        already_added = False
-        if hasattr(model, 'backbone') and hasattr(model.backbone, 'layers'):
-            for group in param_groups:
-                if param in group['params']:
-                    already_added = True
-                    break
-        
-        if not already_added and param.requires_grad:
-            if 'embedding' in name.lower():
-                embedding_params.append(param)
-            else:
-                prediction_head_params.append(param)
+        if id(param) in added_param_ids or not param.requires_grad:
+            continue
+
+        if 'embedding' in name.lower():
+            embedding_params.append(param)
+        else:
+            prediction_head_params.append(param)
     
     # Add embedding parameters with lower LR
     if embedding_params:

@@ -291,12 +291,13 @@ def main_finetune():
     adata_train_val = load_data(args.train_file_path)
     adata_test = load_data(args.test_file_path)
 
-    adata_train_val.obs["tag"] = "train"
-    adata_test.obs["tag"] = "test"
-    adata_concat = sc.AnnData.concatenate(adata_train_val, adata_test)
-    adata_train_val = adata_concat[adata_concat.obs["tag"] == "train"]
-    adata_test = adata_concat[adata_concat.obs["tag"] == "test"]
-    max_length = adata_concat.shape[1]
+    # Keep datasets separate to preserve var columns
+    max_length = max(adata_train_val.shape[1], adata_test.shape[1])
+    
+    # Ensure both datasets have the same var columns
+    # The var columns should remain intact in each dataset
+    print(f"Train dataset var columns: {adata_train_val.var.columns.tolist()}")
+    print(f"Test dataset var columns: {adata_test.var.columns.tolist()}")
 
     cell_type = list(set(adata_train_val.obs[args.cell_type_col].unique().tolist() + adata_test.obs[
         args.cell_type_col].unique().tolist()))

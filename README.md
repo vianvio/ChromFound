@@ -89,7 +89,46 @@ If you use ChromFound, please cite our paper:
 }
 ```
 
+## Fine-tuning Options
+
+The cell type annotation fine-tuning now supports advanced optimization techniques:
+
+### Learning Rate Scheduling
+- **Cosine Annealing with Warm Restarts**: Replaces the previous linear warmup + constant schedule
+- Helps escape local minima and improves convergence
+- Configurable restart periods and minimum learning rates
+
+### Label Smoothing
+- Reduces overfitting by preventing the model from becoming overconfident
+- Default smoothing factor: 0.1 (can be adjusted via `--label_smoothing` flag)
+
+### Gradient Clipping
+- Prevents gradient explosion during training
+- Maximum gradient norm: 1.0 (configurable via `--max_grad_norm` flag)
+
+### Example Fine-tuning Command
+```bash
+python -m src.cell_type_annotation \
+    --train_file_path sample_data/PBMC169K/train.h5ad \
+    --test_file_path sample_data/PBMC169K/test.h5ad \
+    --pretrain_checkpoint_path src/checkpoints \
+    --pretrain_model_file model.pt \
+    --pretrain_config_file chromfd_pretrain.yaml \
+    --cell_type_col celltype \
+    --learning_rate 1e-4 \
+    --batch_size 16 \
+    --epoch 10 \
+    --log_path ./logs \
+    --label_smoothing 0.1 \
+    --max_grad_norm 1.0
+```
+
 ## Changelog
+
+### v1.0.1 (2025-10-17)
+- Added advanced fine-tuning techniques: cosine annealing scheduler, label smoothing, and gradient clipping
+- Improved model convergence and generalization capabilities
+- Enhanced training stability
 
 ### v1.0.0 (2025-10-16)
 - Initial release

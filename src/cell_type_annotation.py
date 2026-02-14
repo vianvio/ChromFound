@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import os
 import pickle
 import random
@@ -10,7 +11,7 @@ import torch.nn.functional as F
 import yaml
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import f1_score
-from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR
 from torch.utils.data import DataLoader
 
 from src.data.dataset_ds import DatasetMultiPad
@@ -19,10 +20,18 @@ from src.utils.model_utils import ModelUtils
 from src.utils.tb_utils import setup_logging
 
 
-def warmup_lambda(current_step, warmup_steps=1000):
+def warmup_cosine_annealing_lambda(current_step, warmup_steps, total_steps, min_lr_ratio=0.1):
+    """
+    Combines warmup with cosine annealing schedule.
+    Linear warmup for the first warmup_steps, then cosine annealing to total_steps.
+    """
     if current_step < warmup_steps:
+        # Linear warmup phase
         return float(current_step) / float(max(1, warmup_steps))
-    return 1.0
+    else:
+        # Cosine annealing phase
+        progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
+        return min_lr_ratio + (1.0 - min_lr_ratio) * 0.5 * (1.0 + math.cos(math.pi * progress))
 
 
 def load_data(file_path):
@@ -165,6 +174,9 @@ def cell_type_finetune(
     cell_type_criterion = FocalLoss(alpha=1, gamma=2, reduction='mean')
     step = 0
     best_f1_score = 0.0
+    # Get gradient clipping value from finetune_args, default to 1.0 if not specified
+    grad_clip_value = finetune_args.get("grad_clip_value", 1.0)
+    
     for eph in range(finetune_args.get("epoch")):
         for batch in train_dataloader:
             model.train()
@@ -178,6 +190,10 @@ def cell_type_finetune(
             # Compute Focal Loss
             loss_cell_type_prediction = cell_type_criterion(cell_type_output, cell_type)
             loss_cell_type_prediction.backward()
+            
+            # Apply gradient clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_value)
+            
             optimizer.step()
             optimizer.zero_grad()
             lr_scheduler.step()
@@ -230,6 +246,7 @@ def main_finetune():
     parser.add_argument("--test_file_path", type=str, required=True, help="validation file path")
     parser.add_argument("--log_path", type=str, required=True, help="log path")
     parser.add_argument("--load_pretrain_ckpt", action="store_true", default=True, help="load pre-trained model")
+    parser.add_argument("--grad_clip_value", type=float, default=1.0, help="gradient clipping value")
     args = parser.parse_args()
 
     with open(os.path.join(args.pretrain_checkpoint_path, args.pretrain_config_file), 'r') as file:
@@ -322,7 +339,13 @@ def main_finetune():
         "weight_decay": 1e-6
     }
     optimizer = torch.optim.AdamW(model.parameters(), **optimizer_params)
-    lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_lambda(step, 200))
+    
+    # Calculate total training steps for cosine annealing
+    total_batches = len(train_dataloader) * args.epoch
+    warmup_steps = 200  # Keep the same warmup steps as before
+    
+    # Use the new warmup + cosine annealing scheduler
+    lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_cosine_annealing_lambda(step, warmup_steps, total_batches))
     if args.load_pretrain_ckpt:
         state_dict = torch.load(str(os.path.join(args.pretrain_checkpoint_path, args.pretrain_model_file)))
         missing_keys, unexpected_keys = model.load_state_dict(state_dict['module'], strict=False)
@@ -343,6 +366,7 @@ def main_finetune():
         "val_evaluate": 20,
         "log_path": log_path,
         "epoch": args.epoch,
+        "grad_clip_value": args.grad_clip_value,  # Use the command-line argument
     }
     cell_type_finetune(
         model,

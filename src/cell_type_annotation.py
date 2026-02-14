@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import yaml
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import f1_score
-from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
 from src.data.dataset_ds import DatasetMultiPad
@@ -23,6 +23,17 @@ def warmup_lambda(current_step, warmup_steps=1000):
     if current_step < warmup_steps:
         return float(current_step) / float(max(1, warmup_steps))
     return 1.0
+
+
+def cosine_annealing_lambda(current_step, total_steps, warmup_steps=1000):
+    """Cosine annealing learning rate schedule with warmup"""
+    if current_step < warmup_steps:
+        # Linear warmup
+        return float(current_step) / float(max(1, warmup_steps))
+    else:
+        # Cosine annealing after warmup
+        progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
+        return 0.5 * (1.0 + torch.cos(torch.tensor(progress * 3.141592653589793)))
 
 
 def load_data(file_path):
@@ -165,8 +176,21 @@ def cell_type_finetune(
     cell_type_criterion = FocalLoss(alpha=1, gamma=2, reduction='mean')
     step = 0
     best_f1_score = 0.0
+    
+    # Gradient accumulation parameters
+    grad_accumulation_steps = finetune_args.get("grad_accumulation_steps", 1)
+    total_steps = len(train_dataloader) * finetune_args.get("epoch")
+    
+    # Initialize ReduceLROnPlateau scheduler if specified
+    scheduler_type = finetune_args.get("scheduler_type", "lambda")  # lambda, cosine, or plateau
+    if scheduler_type == "plateau":
+        plateau_scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
+    else:
+        plateau_scheduler = None
+    
     for eph in range(finetune_args.get("epoch")):
-        for batch in train_dataloader:
+        accumulated_loss = 0.0
+        for batch_idx, batch in enumerate(train_dataloader):
             model.train()
             value, chromosome, pos_start, pos_end, cell_type = batch
             value = value.to(device)
@@ -177,42 +201,74 @@ def cell_type_finetune(
             cell_type_output = model(value, chromosome, pos_start, pos_end)
             # Compute Focal Loss
             loss_cell_type_prediction = cell_type_criterion(cell_type_output, cell_type)
+            
+            # Normalize the loss to account for gradient accumulation
+            loss_cell_type_prediction = loss_cell_type_prediction / grad_accumulation_steps
+            
             loss_cell_type_prediction.backward()
-            optimizer.step()
-            optimizer.zero_grad()
-            lr_scheduler.step()
-            if step % finetune_args.get("loss_evaluate", 10) == 0:
-                accuracy = torch.sum(torch.argmax(cell_type_output, dim=-1) == cell_type).item() / cell_type.size(0)
-                logger.info(
-                    f"[Train] loss at epoch {eph} step {step}: {loss_cell_type_prediction.item()}, "
-                    f"accuracy: {accuracy:.4f}, lr: {optimizer.param_groups[0]['lr']}"
-                )
-            if step % finetune_args.get("val_evaluate", 10) == 0:
-                eval_loss, eval_f1_score, eval_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
-                    evaluate_finetune_model(model, val_dataloader, cell_type_criterion, device)
-                test_loss, test_f1_score, test_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
-                    evaluate_finetune_model(model, test_dataloader, cell_type_criterion, device)
-                logger.info(
-                    f"[Evaluate] loss at epoch {eph} step {step}: {eval_loss}, "
-                    f"cell type accuracy: {eval_accuracy:.4f}, f1 score: {eval_f1_score:.4f}, "
-                    f"lr: {optimizer.param_groups[0]['lr']:.6f}"
-                )
-                logger.info(
-                    f"[Test] loss at epoch {eph} step {step}: {test_loss}, "
-                    f"cell type accuracy: {test_accuracy:.4f}, f1 score: {test_f1_score:.4f}, "
-                    f"lr: {optimizer.param_groups[0]['lr']:.6f}"
-                )
-                if eval_f1_score > best_f1_score:
-                    best_f1_score = eval_f1_score
-                    with open(os.path.join(
-                            finetune_args["log_path"], f"cell_type_label_pred.pkl"), "wb") as f:
-                        pickle.dump((eval_cell_type_label_list, eval_cell_type_pred_list), f)
+            accumulated_loss += loss_cell_type_prediction.item() * grad_accumulation_steps
+            
+            # Perform optimizer step after accumulating gradients
+            if (batch_idx + 1) % grad_accumulation_steps == 0 or (batch_idx + 1) == len(train_dataloader):
+                optimizer.step()
+                optimizer.zero_grad()
+                
+                # Step the learning rate scheduler
+                if scheduler_type == "cosine":
+                    # Calculate current step for cosine annealing
+                    current_step = eph * len(train_dataloader) + batch_idx
+                    # Update the learning rate manually since we're not using a scheduler object
+                    lr_lambda_value = cosine_annealing_lambda(current_step, total_steps, warmup_steps=1000)
+                    for param_group in optimizer.param_groups:
+                        param_group['lr'] = optimizer_params['lr'] * lr_lambda_value
+                elif scheduler_type == "plateau":
+                    # For plateau scheduler, we need to pass the metric value
+                    # For now, we'll skip stepping until evaluation
+                    pass
+                else:  # Default to lambda scheduler
+                    if lr_scheduler is not None:
+                        lr_scheduler.step()
+                
+                if step % finetune_args.get("loss_evaluate", 10) == 0:
+                    accuracy = torch.sum(torch.argmax(cell_type_output, dim=-1) == cell_type).item() / cell_type.size(0)
+                    avg_loss = accumulated_loss / grad_accumulation_steps
                     logger.info(
-                        f"[Test] best validation f1_score: {best_f1_score:.4f} at epoch {eph} step {step}, "
-                        f"test accuracy: {test_accuracy:.4f}, f1_score: {test_f1_score:.4f}"
+                        f"[Train] loss at epoch {eph} step {step}: {avg_loss}, "
+                        f"accuracy: {accuracy:.4f}, lr: {optimizer.param_groups[0]['lr']}"
                     )
-                    torch.save(model.state_dict(), os.path.join(finetune_args["log_path"], "best_model.pt"))
-            step += 1
+                    accumulated_loss = 0.0  # Reset accumulated loss
+                
+                if step % finetune_args.get("val_evaluate", 10) == 0:
+                    eval_loss, eval_f1_score, eval_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
+                        evaluate_finetune_model(model, val_dataloader, cell_type_criterion, device)
+                    test_loss, test_f1_score, test_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
+                        evaluate_finetune_model(model, test_dataloader, cell_type_criterion, device)
+                    logger.info(
+                        f"[Evaluate] loss at epoch {eph} step {step}: {eval_loss}, "
+                        f"cell type accuracy: {eval_accuracy:.4f}, f1 score: {eval_f1_score:.4f}, "
+                        f"lr: {optimizer.param_groups[0]['lr']:.6f}"
+                    )
+                    logger.info(
+                        f"[Test] loss at epoch {eph} step {step}: {test_loss}, "
+                        f"cell type accuracy: {test_accuracy:.4f}, f1 score: {test_f1_score:.4f}, "
+                        f"lr: {optimizer.param_groups[0]['lr']:.6f}"
+                    )
+                    
+                    # Step the plateau scheduler if used
+                    if scheduler_type == "plateau":
+                        plateau_scheduler.step(eval_f1_score)
+                    
+                    if eval_f1_score > best_f1_score:
+                        best_f1_score = eval_f1_score
+                        with open(os.path.join(
+                                finetune_args["log_path"], f"cell_type_label_pred.pkl"), "wb") as f:
+                            pickle.dump((eval_cell_type_label_list, eval_cell_type_pred_list), f)
+                        logger.info(
+                            f"[Test] best validation f1_score: {best_f1_score:.4f} at epoch {eph} step {step}, "
+                            f"test accuracy: {test_accuracy:.4f}, f1_score: {test_f1_score:.4f}"
+                        )
+                        torch.save(model.state_dict(), os.path.join(finetune_args["log_path"], "best_model.pt"))
+                step += 1
         torch.save(model.state_dict(), os.path.join(finetune_args["log_path"], f"epoch_{eph}.pt"))
 
 
@@ -230,6 +286,9 @@ def main_finetune():
     parser.add_argument("--test_file_path", type=str, required=True, help="validation file path")
     parser.add_argument("--log_path", type=str, required=True, help="log path")
     parser.add_argument("--load_pretrain_ckpt", action="store_true", default=True, help="load pre-trained model")
+    parser.add_argument("--grad_accumulation_steps", type=int, default=1, help="number of gradient accumulation steps")
+    parser.add_argument("--scheduler_type", type=str, default="lambda", choices=["lambda", "cosine", "plateau"], 
+                        help="type of learning rate scheduler to use")
     args = parser.parse_args()
 
     with open(os.path.join(args.pretrain_checkpoint_path, args.pretrain_config_file), 'r') as file:
@@ -322,7 +381,17 @@ def main_finetune():
         "weight_decay": 1e-6
     }
     optimizer = torch.optim.AdamW(model.parameters(), **optimizer_params)
-    lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_lambda(step, 200))
+    
+    # Initialize the appropriate learning rate scheduler based on the specified type
+    if args.scheduler_type == "cosine":
+        # For cosine scheduler, we'll initialize it later in the training loop
+        # since it depends on the total number of steps
+        lr_scheduler = None
+    elif args.scheduler_type == "plateau":
+        # Plateau scheduler will be handled separately
+        lr_scheduler = None
+    else:  # Default to lambda scheduler
+        lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_lambda(step, 200))
     if args.load_pretrain_ckpt:
         state_dict = torch.load(str(os.path.join(args.pretrain_checkpoint_path, args.pretrain_model_file)))
         missing_keys, unexpected_keys = model.load_state_dict(state_dict['module'], strict=False)
@@ -343,6 +412,8 @@ def main_finetune():
         "val_evaluate": 20,
         "log_path": log_path,
         "epoch": args.epoch,
+        "grad_accumulation_steps": args.grad_accumulation_steps,
+        "scheduler_type": args.scheduler_type,
     }
     cell_type_finetune(
         model,

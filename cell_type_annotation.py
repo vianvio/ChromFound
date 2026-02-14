@@ -9,10 +9,10 @@ import sys
 # - batch_size: Batch size for inference
 # - device: GPU device ID for computation
 # - output_path: Directory to save the inferred cell embeddings
-ATAC_FILE_PATH = "src/sample_data/PBMC169K"
+ATAC_FILE_PATH = "/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/sample_data/PBMC169K"
 OUTPUT_PATH = "baseline/idea/idea-1" # change by idea id
 inference_config = {
-    "pretrain_checkpoint_path": "checkpoints",
+    "pretrain_checkpoint_path": "/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/checkpoints",
     "pretrain_model_name": "model.pt",
     "pretrain_config_file": "chromfd_pretrain.yaml",
     "batch_size": 8,

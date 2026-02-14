@@ -1,0 +1,33 @@
+/opt/conda/lib/python3.11/site-packages/anndata/_core/anndata.py:1823: UserWarning: Observation names are not unique. To make them unique, call `.obs_names_make_unique`.
+  utils.warn_names_duplicates("obs")
+2026-02-14 11:02:26,774 - INFO - PretrainLogger is configured and ready.
+2026-02-14 11:02:26,775 - INFO - args from parser: Namespace(local_rank=0, batch_size=8, learning_rate=0.0003, pretrain_checkpoint_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/checkpoints', pretrain_model_file='model.pt', pretrain_config_file='chromfd_pretrain.yaml', cell_type_col='celltype', epoch=5, train_file_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad', test_file_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad', log_path='baseline/idea/idea-1/cell_type_annotation', load_pretrain_ckpt=True, grad_accumulation_steps=4, scheduler_type='cosine')
+2026-02-14 11:02:26,775 - INFO - max length for cell type finetune: 1000
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.11/site-packages/pandas/core/indexes/base.py", line 3812, in get_loc
+    return self._engine.get_loc(casted_key)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "pandas/_libs/index.pyx", line 167, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 196, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7088, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7096, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: '#Chromosome'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/root/2022625616164282368/src/cell_type_annotation.py", line 450, in <module>
+    main_finetune()
+  File "/root/2022625616164282368/src/cell_type_annotation.py", line 370, in main_finetune
+    _ = adata_train.var["#Chromosome"]  # Access to ensure it's loaded
+        ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/pandas/core/frame.py", line 4113, in __getitem__
+    indexer = self.columns.get_loc(key)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/pandas/core/indexes/base.py", line 3819, in get_loc
+    raise KeyError(key) from err
+KeyError: '#Chromosome'
+Reading h5ad file from /inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad
+Reading h5ad file from /inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad

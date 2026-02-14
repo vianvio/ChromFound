@@ -5,6 +5,7 @@ import pickle
 import random
 
 import scanpy as sc
+import anndata
 import torch
 import torch.nn.functional as F
 import yaml
@@ -172,6 +173,8 @@ def cell_type_finetune(
         device,
         logger
 ):
+    # Extract initial learning rate from finetune_args
+    initial_learning_rate = finetune_args.get("initial_learning_rate", 0.0003)  # Default fallback
     model = model.to(device)
     cell_type_criterion = FocalLoss(alpha=1, gamma=2, reduction='mean')
     step = 0
@@ -220,7 +223,7 @@ def cell_type_finetune(
                     # Update the learning rate manually since we're not using a scheduler object
                     lr_lambda_value = cosine_annealing_lambda(current_step, total_steps, warmup_steps=1000)
                     for param_group in optimizer.param_groups:
-                        param_group['lr'] = optimizer_params['lr'] * lr_lambda_value
+                        param_group['lr'] = initial_learning_rate * lr_lambda_value
                 elif scheduler_type == "plateau":
                     # For plateau scheduler, we need to pass the metric value
                     # For now, we'll skip stepping until evaluation
@@ -308,9 +311,16 @@ def main_finetune():
 
     adata_train_val.obs["tag"] = "train"
     adata_test.obs["tag"] = "test"
-    adata_concat = sc.AnnData.concatenate(adata_train_val, adata_test)
-    adata_train_val = adata_concat[adata_concat.obs["tag"] == "train"]
-    adata_test = adata_concat[adata_concat.obs["tag"] == "test"]
+    adata_concat = anndata.concat([adata_train_val, adata_test], join='inner', merge='first')
+    adata_train_val_subset = adata_concat[adata_concat.obs["tag"] == "train"]
+    adata_test_subset = adata_concat[adata_concat.obs["tag"] == "test"]
+    
+    # Ensure var attributes are preserved after slicing
+    adata_train_val_subset.var = adata_concat.var.copy()
+    adata_test_subset.var = adata_concat.var.copy()
+    
+    adata_train_val = adata_train_val_subset
+    adata_test = adata_test_subset
     max_length = adata_concat.shape[1]
 
     cell_type = list(set(adata_train_val.obs[args.cell_type_col].unique().tolist() + adata_test.obs[
@@ -352,6 +362,16 @@ def main_finetune():
     val_idx = idx_list[split_idx:]
     adata_train = adata_train_val[train_idx]
     adata_val = adata_train_val[val_idx]
+    
+    # Ensure var attributes are preserved after indexing and cache them
+    adata_train.var = adata_train_val.var.copy()
+    adata_val.var = adata_train_val.var.copy()
+    adata_test.var = adata_concat.var.copy()  # Also ensure test data has var attributes
+    
+    # Force loading of var attributes to memory to prevent access issues
+    _ = adata_train.var["#Chromosome"]  # Access to ensure it's loaded
+    _ = adata_val.var["#Chromosome"]    # Access to ensure it's loaded  
+    _ = adata_test.var["#Chromosome"]   # Access to ensure it's loaded
 
     train_dataset = DatasetMultiPad(*[adata_train], **pretrain_data_args)
     val_dataset = DatasetMultiPad(*[adata_val], **pretrain_data_args)
@@ -381,6 +401,7 @@ def main_finetune():
         "weight_decay": 1e-6
     }
     optimizer = torch.optim.AdamW(model.parameters(), **optimizer_params)
+    initial_learning_rate = args.learning_rate
     
     # Initialize the appropriate learning rate scheduler based on the specified type
     if args.scheduler_type == "cosine":
@@ -414,6 +435,7 @@ def main_finetune():
         "epoch": args.epoch,
         "grad_accumulation_steps": args.grad_accumulation_steps,
         "scheduler_type": args.scheduler_type,
+        "initial_learning_rate": args.learning_rate,
     }
     cell_type_finetune(
         model,

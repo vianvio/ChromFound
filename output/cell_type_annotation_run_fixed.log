@@ -1,0 +1,25 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/root/2022625616164282368/src/cell_type_annotation.py", line 432, in <module>
+    main_finetune()
+  File "/root/2022625616164282368/src/cell_type_annotation.py", line 306, in main_finetune
+    adata_train_val = load_data(args.train_file_path)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/2022625616164282368/src/cell_type_annotation.py", line 42, in load_data
+    adata = sc.read_h5ad(file_path)
+            ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/anndata/_io/h5ad.py", line 263, in read_h5ad
+    with h5py.File(filename, "r") as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/h5py/_hl/files.py", line 566, in __init__
+    fid = make_fid(name, mode, userblock_size, fapl, fcpl, swmr=swmr)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/h5py/_hl/files.py", line 241, in make_fid
+    fid = h5f.open(name, flags, fapl=fapl)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "h5py/_objects.pyx", line 54, in h5py._objects.with_phil.wrapper
+  File "h5py/_objects.pyx", line 55, in h5py._objects.with_phil.wrapper
+  File "h5py/h5f.pyx", line 104, in h5py.h5f.open
+FileNotFoundError: [Errno 2] Unable to synchronously open file (unable to open file: name = 'sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad', errno = 2, error message = 'No such file or directory', flags = 0, o_flags = 0)
+Reading h5ad file from sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad

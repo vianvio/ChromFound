@@ -251,12 +251,26 @@ def main_finetune():
     adata_train_val = load_data(args.train_file_path)
     adata_test = load_data(args.test_file_path)
 
+    # Determine max_length from the training data
+    max_length = adata_train_val.shape[1]
+    
+    # Add tag column to distinguish datasets
     adata_train_val.obs["tag"] = "train"
     adata_test.obs["tag"] = "test"
-    adata_concat = sc.AnnData.concatenate(adata_train_val, adata_test)
-    adata_train_val = adata_concat[adata_concat.obs["tag"] == "train"]
-    adata_test = adata_concat[adata_concat.obs["tag"] == "test"]
-    max_length = adata_concat.shape[1]
+    
+    # Make obs names unique before concatenating
+    adata_train_val.obs_names_make_unique()
+    adata_test.obs_names_make_unique()
+    
+    # Concatenate along obs axis but preserve var columns
+    adata_concat = sc.concat([adata_train_val, adata_test], join='outer', label="tag", 
+                             index_unique="-", merge='first')
+    
+    # After concatenation, the tag column becomes categorical with numeric codes
+    # So we need to split based on the original indices
+    n_train = adata_train_val.shape[0]
+    adata_train_val = adata_concat[:n_train]  # First n_train samples are from train
+    adata_test = adata_concat[n_train:]       # Remaining samples are from test
 
     cell_type = list(set(adata_train_val.obs[args.cell_type_col].unique().tolist() + adata_test.obs[
         args.cell_type_col].unique().tolist()))

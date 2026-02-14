@@ -1,0 +1,221 @@
+2026-02-14 02:48:18,727 - INFO - PretrainLogger is configured and ready.
+2026-02-14 02:48:18,727 - INFO - args from parser: Namespace(local_rank=0, batch_size=8, learning_rate=0.0003, pretrain_checkpoint_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/checkpoints', pretrain_model_file='model.pt', pretrain_config_file='chromfd_pretrain.yaml', cell_type_col='celltype', epoch=5, train_file_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad', test_file_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad', log_path='output/cell_type_annotation_idea1/cell_type_annotation', load_pretrain_ckpt=True)
+2026-02-14 02:48:18,727 - INFO - max length for cell type finetune: 1000
+2026-02-14 02:48:19,820 - INFO - Model parameters: FinetuneModelMambaCellType(
+  (embedding): PretrainEmbeddingSimple(
+    (value_embedding): ValueEmbedding(
+      (embedding): Linear(in_features=1, out_features=128, bias=True)
+    )
+    (chromosome_embedding): Embedding(25, 128)
+    (position_embedding): PositionalEmbeddingWithDnaPosition()
+    (dropout): Dropout(p=0.1, inplace=False)
+  )
+  (backbone): MambaMixer(
+    (layers): ModuleList(
+      (0-3): 4 x Block(
+        (norm): RMSNorm()
+        (mixer): Mamba(
+          (in_proj): Linear(in_features=32, out_features=128, bias=False)
+          (conv1d): Conv1d(64, 64, kernel_size=(4,), stride=(1,), padding=(3,), groups=64)
+          (act): SiLU()
+          (x_proj): Linear(in_features=64, out_features=34, bias=False)
+          (dt_proj): Linear(in_features=2, out_features=64, bias=True)
+          (out_proj): Linear(in_features=64, out_features=32, bias=False)
+        )
+        (reduction_layer): Linear(in_features=128, out_features=32, bias=True)
+        (expansion_layer): Linear(in_features=32, out_features=128, bias=True)
+        (chromfound_block): ChromFoundTransformerBlock(
+          (norm1): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+          (attn): WindowAttention1D(
+            (qkv): Linear(in_features=128, out_features=384, bias=True)
+            (attn_drop): Dropout(p=0.0, inplace=False)
+            (proj): Linear(in_features=128, out_features=128, bias=True)
+            (proj_drop): Dropout(p=0.0, inplace=False)
+          )
+          (drop_path): Identity()
+          (norm2): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+          (mlp): Mlp(
+            (fc1): Linear(in_features=128, out_features=128, bias=True)
+            (act): GELU(approximate='none')
+            (fc2): Linear(in_features=128, out_features=128, bias=True)
+            (drop): Dropout(p=0.0, inplace=False)
+          )
+        )
+      )
+    )
+    (norm_f): RMSNorm()
+  )
+  (mask_token_prediction): MaskTokenPrediction(
+    (projection): Linear(in_features=128, out_features=1, bias=True)
+  )
+  (post_backbone_dropout): Dropout(p=0.3, inplace=False)
+  (feature_projection): Sequential(
+    (0): Linear(in_features=128, out_features=256, bias=True)
+    (1): GELU(approximate='none')
+    (2): Dropout(p=0.3, inplace=False)
+    (3): Linear(in_features=256, out_features=1, bias=True)
+    (4): GELU(approximate='none')
+  )
+  (ft_cell_type_projection): Sequential(
+    (0): Linear(in_features=1000, out_features=1024, bias=True)
+    (1): GELU(approximate='none')
+    (2): Dropout(p=0.3, inplace=False)
+    (3): Linear(in_features=1024, out_features=512, bias=True)
+    (4): GELU(approximate='none')
+    (5): Dropout(p=0.3, inplace=False)
+    (6): Linear(in_features=512, out_features=128, bias=True)
+    (7): GELU(approximate='none')
+    (8): Dropout(p=0.3, inplace=False)
+    (9): Linear(in_features=128, out_features=5, bias=True)
+  )
+)
+2026-02-14 02:49:27,268 - INFO - PretrainLogger is configured and ready.
+2026-02-14 02:49:27,268 - INFO - args from parser: Namespace(local_rank=0, batch_size=8, learning_rate=0.0003, pretrain_checkpoint_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/checkpoints', pretrain_model_file='model.pt', pretrain_config_file='chromfd_pretrain.yaml', cell_type_col='celltype', epoch=5, train_file_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad', test_file_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad', log_path='output/cell_type_annotation_idea1/cell_type_annotation', load_pretrain_ckpt=True)
+2026-02-14 02:49:27,268 - INFO - max length for cell type finetune: 1000
+2026-02-14 02:50:48,536 - INFO - PretrainLogger is configured and ready.
+2026-02-14 02:50:48,536 - INFO - args from parser: Namespace(local_rank=0, batch_size=8, learning_rate=0.0003, pretrain_checkpoint_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/checkpoints', pretrain_model_file='model.pt', pretrain_config_file='chromfd_pretrain.yaml', cell_type_col='celltype', epoch=5, train_file_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad', test_file_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad', log_path='output/cell_type_annotation_idea1/cell_type_annotation', load_pretrain_ckpt=True)
+2026-02-14 02:50:48,536 - INFO - max length for cell type finetune: 1000
+2026-02-14 02:52:13,474 - INFO - PretrainLogger is configured and ready.
+2026-02-14 02:52:13,474 - INFO - args from parser: Namespace(local_rank=0, batch_size=8, learning_rate=0.0003, pretrain_checkpoint_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/checkpoints', pretrain_model_file='model.pt', pretrain_config_file='chromfd_pretrain.yaml', cell_type_col='celltype', epoch=5, train_file_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad', test_file_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad', log_path='output/cell_type_annotation_idea1/cell_type_annotation', load_pretrain_ckpt=True)
+2026-02-14 02:52:13,474 - INFO - max length for cell type finetune: 1000
+2026-02-14 02:53:42,976 - INFO - PretrainLogger is configured and ready.
+2026-02-14 02:53:42,976 - INFO - args from parser: Namespace(local_rank=0, batch_size=8, learning_rate=0.0003, pretrain_checkpoint_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/checkpoints', pretrain_model_file='model.pt', pretrain_config_file='chromfd_pretrain.yaml', cell_type_col='celltype', epoch=5, train_file_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/sample_data/PBMC169K/atac_pbmc_benchmark_EPF_hydrop_1_qc_deepen_norm_log.h5ad', test_file_path='/inspire/cpfs/tenant_predefaa-9a1b-4522-bb10-8850f313be13/global_user/0815-shenlijie/data/sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad', log_path='output/cell_type_annotation_idea1/cell_type_annotation', load_pretrain_ckpt=True)
+2026-02-14 02:53:42,976 - INFO - max length for cell type finetune: 1000
+2026-02-14 02:53:43,684 - INFO - Model parameters: FinetuneModelMambaCellType(
+  (embedding): PretrainEmbeddingSimple(
+    (value_embedding): ValueEmbedding(
+      (embedding): Linear(in_features=1, out_features=128, bias=True)
+    )
+    (chromosome_embedding): Embedding(25, 128)
+    (position_embedding): PositionalEmbeddingWithDnaPosition()
+    (dropout): Dropout(p=0.1, inplace=False)
+  )
+  (backbone): MambaMixer(
+    (layers): ModuleList(
+      (0-3): 4 x Block(
+        (norm): RMSNorm()
+        (mixer): Mamba(
+          (in_proj): Linear(in_features=32, out_features=128, bias=False)
+          (conv1d): Conv1d(64, 64, kernel_size=(4,), stride=(1,), padding=(3,), groups=64)
+          (act): SiLU()
+          (x_proj): Linear(in_features=64, out_features=34, bias=False)
+          (dt_proj): Linear(in_features=2, out_features=64, bias=True)
+          (out_proj): Linear(in_features=64, out_features=32, bias=False)
+        )
+        (reduction_layer): Linear(in_features=128, out_features=32, bias=True)
+        (expansion_layer): Linear(in_features=32, out_features=128, bias=True)
+        (chromfound_block): ChromFoundTransformerBlock(
+          (norm1): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+          (attn): WindowAttention1D(
+            (qkv): Linear(in_features=128, out_features=384, bias=True)
+            (attn_drop): Dropout(p=0.0, inplace=False)
+            (proj): Linear(in_features=128, out_features=128, bias=True)
+            (proj_drop): Dropout(p=0.0, inplace=False)
+          )
+          (drop_path): Identity()
+          (norm2): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+          (mlp): Mlp(
+            (fc1): Linear(in_features=128, out_features=128, bias=True)
+            (act): GELU(approximate='none')
+            (fc2): Linear(in_features=128, out_features=128, bias=True)
+            (drop): Dropout(p=0.0, inplace=False)
+          )
+        )
+      )
+    )
+    (norm_f): RMSNorm()
+  )
+  (mask_token_prediction): MaskTokenPrediction(
+    (projection): Linear(in_features=128, out_features=1, bias=True)
+  )
+  (post_backbone_dropout): Dropout(p=0.3, inplace=False)
+  (feature_projection): Sequential(
+    (0): Linear(in_features=128, out_features=256, bias=True)
+    (1): GELU(approximate='none')
+    (2): Dropout(p=0.3, inplace=False)
+    (3): Linear(in_features=256, out_features=1, bias=True)
+    (4): GELU(approximate='none')
+  )
+  (ft_cell_type_projection): Sequential(
+    (0): Linear(in_features=1000, out_features=1024, bias=True)
+    (1): GELU(approximate='none')
+    (2): Dropout(p=0.3, inplace=False)
+    (3): Linear(in_features=1024, out_features=512, bias=True)
+    (4): GELU(approximate='none')
+    (5): Dropout(p=0.3, inplace=False)
+    (6): Linear(in_features=512, out_features=128, bias=True)
+    (7): GELU(approximate='none')
+    (8): Dropout(p=0.3, inplace=False)
+    (9): Linear(in_features=128, out_features=5, bias=True)
+  )
+)
+2026-02-14 02:53:47,513 - INFO - [Train] loss at epoch 0 step 0: 1.2890832424163818, accuracy: 0.1250, lr: 0.0002999963458242739
+2026-02-14 02:53:48,242 - INFO - [Evaluate] loss at epoch 0 step 0: 1.0248273611068726, cell type accuracy: 0.2875, f1 score: 0.1257, lr: 0.000300
+2026-02-14 02:53:48,242 - INFO - [Test] loss at epoch 0 step 0: 1.060034990310669, cell type accuracy: 0.1800, f1 score: 0.0698, lr: 0.000300
+2026-02-14 02:53:48,242 - INFO - [Test] best validation f1_score: 0.1257 at epoch 0 step 0, test accuracy: 0.1800, f1_score: 0.0698
+2026-02-14 02:53:48,918 - INFO - [Train] loss at epoch 0 step 20: 1.0281121730804443, accuracy: 0.2500, lr: 0.00029839138632780006
+2026-02-14 02:53:49,634 - INFO - [Evaluate] loss at epoch 0 step 20: 1.0276108980178833, cell type accuracy: 0.2625, f1 score: 0.0832, lr: 0.000298
+2026-02-14 02:53:49,634 - INFO - [Test] loss at epoch 0 step 20: 1.0311222076416016, cell type accuracy: 0.1750, f1 score: 0.0596, lr: 0.000298
+2026-02-14 02:53:50,243 - INFO - [Train] loss at epoch 0 step 40: 1.0284843444824219, accuracy: 0.3750, lr: 0.00029389913048228153
+2026-02-14 02:53:50,960 - INFO - [Evaluate] loss at epoch 0 step 40: 1.0280301570892334, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000294
+2026-02-14 02:53:50,961 - INFO - [Test] loss at epoch 0 step 40: 1.0310962200164795, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000294
+2026-02-14 02:53:51,569 - INFO - [Train] loss at epoch 0 step 60: 1.0276367664337158, accuracy: 0.3750, lr: 0.00028660701493788614
+2026-02-14 02:53:52,286 - INFO - [Evaluate] loss at epoch 0 step 60: 1.0274358987808228, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000287
+2026-02-14 02:53:52,286 - INFO - [Test] loss at epoch 0 step 60: 1.0311425924301147, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000287
+2026-02-14 02:53:52,898 - INFO - [Train] loss at epoch 0 step 80: 1.0310946702957153, accuracy: 0.1250, lr: 0.00027665697242902697
+2026-02-14 02:53:53,614 - INFO - [Evaluate] loss at epoch 0 step 80: 1.0262571573257446, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000277
+2026-02-14 02:53:53,615 - INFO - [Test] loss at epoch 0 step 80: 1.0317375659942627, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000277
+2026-02-14 02:53:54,239 - INFO - [Train] loss at epoch 1 step 100: 1.02105712890625, accuracy: 0.3750, lr: 0.0002642426692151335
+2026-02-14 02:53:54,960 - INFO - [Evaluate] loss at epoch 1 step 100: 1.0257554054260254, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000264
+2026-02-14 02:53:54,960 - INFO - [Test] loss at epoch 1 step 100: 1.0324991941452026, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000264
+2026-02-14 02:53:55,571 - INFO - [Train] loss at epoch 1 step 120: 1.0161185264587402, accuracy: 0.3750, lr: 0.0002496057355872034
+2026-02-14 02:53:56,291 - INFO - [Evaluate] loss at epoch 1 step 120: 1.024351716041565, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000250
+2026-02-14 02:53:56,291 - INFO - [Test] loss at epoch 1 step 120: 1.0337193012237549, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000250
+2026-02-14 02:53:56,904 - INFO - [Train] loss at epoch 1 step 140: 1.0398077964782715, accuracy: 0.1250, lr: 0.00023303106280903933
+2026-02-14 02:53:57,623 - INFO - [Evaluate] loss at epoch 1 step 140: 1.0240951776504517, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000233
+2026-02-14 02:53:57,624 - INFO - [Test] loss at epoch 1 step 140: 1.03385329246521, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000233
+2026-02-14 02:53:58,254 - INFO - [Train] loss at epoch 1 step 160: 1.030213475227356, accuracy: 0.2500, lr: 0.0002148412580328572
+2026-02-14 02:53:58,983 - INFO - [Evaluate] loss at epoch 1 step 160: 1.02590811252594, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000215
+2026-02-14 02:53:58,983 - INFO - [Test] loss at epoch 1 step 160: 1.0330102443695068, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000215
+2026-02-14 02:53:59,612 - INFO - [Train] loss at epoch 2 step 180: 1.0230799913406372, accuracy: 0.1250, lr: 0.0001953903651180291
+2026-02-14 02:54:00,337 - INFO - [Evaluate] loss at epoch 2 step 180: 1.0255986452102661, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000195
+2026-02-14 02:54:00,337 - INFO - [Test] loss at epoch 2 step 180: 1.0331063270568848, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000195
+2026-02-14 02:54:00,952 - INFO - [Train] loss at epoch 2 step 200: 0.9982790946960449, accuracy: 0.2500, lr: 0.00017505697357007947
+2026-02-14 02:54:01,673 - INFO - [Evaluate] loss at epoch 2 step 200: 1.025585412979126, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000175
+2026-02-14 02:54:01,673 - INFO - [Test] loss at epoch 2 step 200: 1.0346362590789795, cell type accuracy: 0.1750, f1 score: 0.0596, lr: 0.000175
+2026-02-14 02:54:02,326 - INFO - [Train] loss at epoch 2 step 220: 1.0274677276611328, accuracy: 0.1250, lr: 0.00015423684972659915
+2026-02-14 02:54:03,044 - INFO - [Evaluate] loss at epoch 2 step 220: 1.024420976638794, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000154
+2026-02-14 02:54:03,044 - INFO - [Test] loss at epoch 2 step 220: 1.0353944301605225, cell type accuracy: 0.1750, f1 score: 0.0596, lr: 0.000154
+2026-02-14 02:54:03,656 - INFO - [Train] loss at epoch 2 step 240: 1.0650465488433838, accuracy: 0.0000, lr: 0.00013333523361566153
+2026-02-14 02:54:04,376 - INFO - [Evaluate] loss at epoch 2 step 240: 1.024486780166626, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000133
+2026-02-14 02:54:04,376 - INFO - [Test] loss at epoch 2 step 240: 1.0349372625350952, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000133
+2026-02-14 02:54:04,989 - INFO - [Train] loss at epoch 2 step 260: 1.0479886531829834, accuracy: 0.1250, lr: 0.00011275895141963008
+2026-02-14 02:54:05,713 - INFO - [Evaluate] loss at epoch 2 step 260: 1.0251634120941162, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000113
+2026-02-14 02:54:05,713 - INFO - [Test] loss at epoch 2 step 260: 1.0337028503417969, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000113
+2026-02-14 02:54:06,339 - INFO - [Train] loss at epoch 3 step 280: 1.0291239023208618, accuracy: 0.1250, lr: 9.290849706627647e-05
+2026-02-14 02:54:07,058 - INFO - [Evaluate] loss at epoch 3 step 280: 1.0251740217208862, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000093
+2026-02-14 02:54:07,058 - INFO - [Test] loss at epoch 3 step 280: 1.0331686735153198, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000093
+2026-02-14 02:54:07,671 - INFO - [Train] loss at epoch 3 step 300: 1.0172704458236694, accuracy: 0.1250, lr: 7.417023707003155e-05
+2026-02-14 02:54:08,389 - INFO - [Evaluate] loss at epoch 3 step 300: 1.025356650352478, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000074
+2026-02-14 02:54:08,389 - INFO - [Test] loss at epoch 3 step 300: 1.033092975616455, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000074
+2026-02-14 02:54:09,004 - INFO - [Train] loss at epoch 3 step 320: 1.03592848777771, accuracy: 0.2500, lr: 5.6908890347267394e-05
+2026-02-14 02:54:09,722 - INFO - [Evaluate] loss at epoch 3 step 320: 1.024673342704773, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000057
+2026-02-14 02:54:09,722 - INFO - [Test] loss at epoch 3 step 320: 1.033470630645752, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000057
+2026-02-14 02:54:10,337 - INFO - [Train] loss at epoch 3 step 340: 1.0511021614074707, accuracy: 0.1250, lr: 4.1460429377451786e-05
+2026-02-14 02:54:11,068 - INFO - [Evaluate] loss at epoch 3 step 340: 1.024773359298706, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000041
+2026-02-14 02:54:11,068 - INFO - [Test] loss at epoch 3 step 340: 1.0334185361862183, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000041
+2026-02-14 02:54:11,697 - INFO - [Train] loss at epoch 4 step 360: 1.0504529476165771, accuracy: 0.1250, lr: 2.8125540880998247e-05
+2026-02-14 02:54:12,415 - INFO - [Evaluate] loss at epoch 4 step 360: 1.0247761011123657, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000028
+2026-02-14 02:54:12,415 - INFO - [Test] loss at epoch 4 step 360: 1.0335150957107544, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000028
+2026-02-14 02:54:13,038 - INFO - [Train] loss at epoch 4 step 380: 0.9925248622894287, accuracy: 0.3750, lr: 1.716377329427938e-05
+2026-02-14 02:54:13,759 - INFO - [Evaluate] loss at epoch 4 step 380: 1.024845838546753, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000017
+2026-02-14 02:54:13,759 - INFO - [Test] loss at epoch 4 step 380: 1.033477783203125, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000017
+2026-02-14 02:54:14,372 - INFO - [Train] loss at epoch 4 step 400: 1.0429162979125977, accuracy: 0.2500, lr: 8.788484954544862e-06
+2026-02-14 02:54:15,093 - INFO - [Evaluate] loss at epoch 4 step 400: 1.02495539188385, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000009
+2026-02-14 02:54:15,093 - INFO - [Test] loss at epoch 4 step 400: 1.0334066152572632, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000009
+2026-02-14 02:54:15,706 - INFO - [Train] loss at epoch 4 step 420: 1.0218509435653687, accuracy: 0.1250, lr: 3.162691322578375e-06
+2026-02-14 02:54:16,427 - INFO - [Evaluate] loss at epoch 4 step 420: 1.0248968601226807, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000003
+2026-02-14 02:54:16,427 - INFO - [Test] loss at epoch 4 step 420: 1.0334482192993164, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000003
+2026-02-14 02:54:17,039 - INFO - [Train] loss at epoch 4 step 440: 1.000113606452942, accuracy: 0.2500, lr: 3.9589207218067973e-07
+2026-02-14 02:54:17,757 - INFO - [Evaluate] loss at epoch 4 step 440: 1.0248887538909912, cell type accuracy: 0.2125, f1 score: 0.0701, lr: 0.000000
+2026-02-14 02:54:17,757 - INFO - [Test] loss at epoch 4 step 440: 1.0334590673446655, cell type accuracy: 0.2150, f1 score: 0.0708, lr: 0.000000

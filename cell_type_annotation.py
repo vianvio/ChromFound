@@ -4,7 +4,7 @@ import sys
 
 # Configuration for running cell embedding inference
 # - pretrain_checkpoint_path: Directory containing the pretrained model checkpoint
-# - pretrain_model_name: File name of the pretrained model
+# - pretrain_model_file: File name of the pretrained model
 # - pretrain_config_file: Configuration file used for model architecture and settings
 # - batch_size: Batch size for inference
 # - device: GPU device ID for computation
@@ -13,7 +13,7 @@ ATAC_FILE_PATH = "src/sample_data/PBMC169K"
 OUTPUT_PATH = "baseline/idea/idea-1" # change by idea id
 inference_config = {
     "pretrain_checkpoint_path": "checkpoints",
-    "pretrain_model_name": "model.pt",
+    "pretrain_model_file": "model.pt",
     "pretrain_config_file": "chromfd_pretrain.yaml",
     "batch_size": 8,
     "device": 0,
@@ -29,7 +29,7 @@ train_command = [
     '--batch_size', f'{inference_config["batch_size"]}',
     '--learning_rate', '0.0003',
     '--pretrain_checkpoint_path', inference_config['pretrain_checkpoint_path'],
-    '--pretrain_model_file', inference_config['pretrain_model_name'],
+    '--pretrain_model_file', inference_config['pretrain_model_file'],
     '--pretrain_config_file', inference_config['pretrain_config_file'],
     '--batch_size', f'{inference_config["batch_size"]}',
     '--epoch', '5',

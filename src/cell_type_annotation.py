@@ -220,7 +220,9 @@ def main_finetune():
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_rank", type=int, help='local rank passed from distributed launcher', default=0)
     parser.add_argument("--batch_size", type=int, default=16, help="batch size for training")
-    parser.add_argument("--learning_rate", type=float, required=True, help="learning rate for finetune")
+    parser.add_argument("--learning_rate", type=float, default=3e-4, help="base learning rate for finetune")
+    parser.add_argument("--backbone_lr", type=float, default=1e-5, help="learning rate for backbone (default: 1e-5)")
+    parser.add_argument("--head_lr", type=float, default=1e-3, help="learning rate for classification head (default: 1e-3)")
     parser.add_argument("--pretrain_checkpoint_path", type=str, required=True, help="path to pretrain checkpoint")
     parser.add_argument("--pretrain_model_file", type=str, required=True, help="file name of pre-trained model")
     parser.add_argument('--pretrain_config_file', type=str, required=True, help='file name of pre-trained config')
@@ -315,13 +317,43 @@ def main_finetune():
     model = FinetuneModelMambaCellType(**pretrain_model_args)
     model = model.to(device)
     finetune_logger.info(f'Model parameters: {model}')
+    
+    # Separate parameters for backbone and classification head
+    backbone_params = []
+    head_params = []
+    
+    for name, param in model.named_parameters():
+        if "ft_cell_type_projection" in name or "feature_projection" in name:
+            # These are the classification head parameters
+            head_params.append(param)
+        else:
+            # These are the backbone parameters (embedding, backbone, mask_token_prediction)
+            backbone_params.append(param)
+    
+    # Create parameter groups with different learning rates
+    param_groups = [
+        {
+            "params": backbone_params,
+            "lr": args.backbone_lr,
+            "name": "backbone"
+        },
+        {
+            "params": head_params,
+            "lr": args.head_lr,
+            "name": "head"
+        }
+    ]
+    
     optimizer_params = {
-        "lr": args.learning_rate,
         "betas": (0.8, 0.999),
         "eps": 1e-8,
         "weight_decay": 1e-6
     }
-    optimizer = torch.optim.AdamW(model.parameters(), **optimizer_params)
+    optimizer = torch.optim.AdamW(param_groups, **optimizer_params)
+    
+    finetune_logger.info(f'Optimizer parameter groups:')
+    finetune_logger.info(f'  Backbone parameters: {len(backbone_params)} parameters with LR={args.backbone_lr}')
+    finetune_logger.info(f'  Head parameters: {len(head_params)} parameters with LR={args.head_lr}')
     lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_lambda(step, 200))
     if args.load_pretrain_ckpt:
         state_dict = torch.load(str(os.path.join(args.pretrain_checkpoint_path, args.pretrain_model_file)))

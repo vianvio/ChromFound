@@ -77,6 +77,65 @@ For an interactive walkthrough and examples, see the tutorial notebook `cell_emb
     - `hg38_Start`: 0-based, inclusive genomic start coordinate (int) on the hg38 reference (base pairs).
     - `hg38_End`: 0-based, exclusive genomic end coordinate (int) on the hg38 reference (base pairs).
 
+## Advanced Training Techniques
+
+ChromFound now supports advanced training techniques to improve model convergence, stability, and generalization:
+
+### 1. Gradient Clipping and Dynamic Learning Rate Adjustment
+- Gradient clipping to prevent exploding gradients during fine-tuning
+- Dynamic learning rate scheduling with cosine annealing or exponential decay
+- Monitoring of gradient norms during training
+
+### 2. Label Smoothing
+- Implementation of label smoothing to reduce overfitting
+- Adjustable smoothing factor to balance between confidence and generalization
+
+### 3. Hierarchical Learning Rate Fine-tuning
+- Different learning rates for different model layers
+- Lower learning rates for early layers to preserve general features
+- Higher learning rates for later layers to adapt to specific tasks
+
+## Usage Examples
+
+### Enhanced Fine-tuning with Advanced Techniques
+```bash
+python -m src/enhanced_cell_type_finetune \
+    --data_path sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad \
+    --output_path sample_data/PBMC169K/cell_embedding \
+    --pretrain_checkpoint_path src/checkpoints \
+    --pretrain_model_file model.pt \
+    --pretrain_config_file chromfd_pretrain.yaml \
+    --batch_size 16 \
+    --learning_rate 1e-4 \
+    --epoch 10 \
+    --cell_type_col celltype \
+    --log_path ./logs \
+    --use_gradient_clipping \
+    --gradient_clip_threshold 1.0 \
+    --label_smoothing 0.1 \
+    --use_hierarchical_lr \
+    --layer_decay 0.9 \
+    --lr_scheduler_type cosine \
+    --min_lr 1e-6
+```
+
+### Standard Fine-tuning with Selected Features
+```bash
+python -m src/cell_type_annotation \
+    --data_path sample_data/PBMC169K/atac_pbmc_benchmark_VIB_10xv1_1_qc_deepen_norm_log.h5ad \
+    --pretrain_checkpoint_path src/checkpoints \
+    --pretrain_model_file model.pt \
+    --pretrain_config_file chromfd_pretrain.yaml \
+    --batch_size 16 \
+    --learning_rate 1e-4 \
+    --epoch 10 \
+    --cell_type_col celltype \
+    --log_path ./logs \
+    --use_gradient_clipping \
+    --label_smoothing 0.1 \
+    --use_hierarchical_lr
+```
+
 ## Citation
 If you use ChromFound, please cite our paper:
 
@@ -90,6 +149,14 @@ If you use ChromFound, please cite our paper:
 ```
 
 ## Changelog
+
+### v1.1.0 (2025-10-20)
+- Added advanced training techniques:
+  - Gradient clipping and dynamic learning rate adjustment
+  - Label smoothing implementation
+  - Hierarchical learning rate fine-tuning
+- New enhanced fine-tuning script with all improvements
+- Updated documentation with usage examples
 
 ### v1.0.0 (2025-10-16)
 - Initial release

@@ -185,7 +185,7 @@ def cell_type_finetune(
                 accuracy = torch.sum(torch.argmax(cell_type_output, dim=-1) == cell_type).item() / cell_type.size(0)
                 logger.info(
                     f"[Train] loss at epoch {eph} step {step}: {loss_cell_type_prediction.item()}, "
-                    f"accuracy: {accuracy:.4f}, lr: {optimizer.param_groups[0]['lr']}"
+                    f"accuracy: {accuracy:.4f}, backbone_lr: {optimizer.param_groups[0]['lr']:.6f}, head_lr: {optimizer.param_groups[1]['lr']:.6f}"
                 )
             if step % finetune_args.get("val_evaluate", 10) == 0:
                 eval_loss, eval_f1_score, eval_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
@@ -195,12 +195,12 @@ def cell_type_finetune(
                 logger.info(
                     f"[Evaluate] loss at epoch {eph} step {step}: {eval_loss}, "
                     f"cell type accuracy: {eval_accuracy:.4f}, f1 score: {eval_f1_score:.4f}, "
-                    f"lr: {optimizer.param_groups[0]['lr']:.6f}"
+                    f"backbone_lr: {optimizer.param_groups[0]['lr']:.6f}, head_lr: {optimizer.param_groups[1]['lr']:.6f}"
                 )
                 logger.info(
                     f"[Test] loss at epoch {eph} step {step}: {test_loss}, "
                     f"cell type accuracy: {test_accuracy:.4f}, f1 score: {test_f1_score:.4f}, "
-                    f"lr: {optimizer.param_groups[0]['lr']:.6f}"
+                    f"backbone_lr: {optimizer.param_groups[0]['lr']:.6f}, head_lr: {optimizer.param_groups[1]['lr']:.6f}"
                 )
                 if eval_f1_score > best_f1_score:
                     best_f1_score = eval_f1_score
@@ -209,7 +209,8 @@ def cell_type_finetune(
                         pickle.dump((eval_cell_type_label_list, eval_cell_type_pred_list), f)
                     logger.info(
                         f"[Test] best validation f1_score: {best_f1_score:.4f} at epoch {eph} step {step}, "
-                        f"test accuracy: {test_accuracy:.4f}, f1_score: {test_f1_score:.4f}"
+                        f"test accuracy: {test_accuracy:.4f}, f1_score: {test_f1_score:.4f}, "
+                        f"backbone_lr: {optimizer.param_groups[0]['lr']:.6f}, head_lr: {optimizer.param_groups[1]['lr']:.6f}"
                     )
                     torch.save(model.state_dict(), os.path.join(finetune_args["log_path"], "best_model.pt"))
             step += 1
@@ -315,13 +316,28 @@ def main_finetune():
     model = FinetuneModelMambaCellType(**pretrain_model_args)
     model = model.to(device)
     finetune_logger.info(f'Model parameters: {model}')
-    optimizer_params = {
-        "lr": args.learning_rate,
-        "betas": (0.8, 0.999),
-        "eps": 1e-8,
-        "weight_decay": 1e-6
-    }
-    optimizer = torch.optim.AdamW(model.parameters(), **optimizer_params)
+    # Define different learning rates for backbone and classification head
+    backbone_lr = 1e-5  # Lower learning rate for pre-trained backbone
+    head_lr = 1e-3      # Higher learning rate for new classification head
+    
+    # Separate parameters for different learning rates
+    backbone_params = []
+    head_params = []
+    
+    for name, param in model.named_parameters():
+        if "ft_cell_type_projection" in name:
+            # Parameters in the classification head
+            head_params.append(param)
+        elif "mask_token_prediction" not in name:  # Exclude mask token prediction as it's frozen
+            # Parameters in the backbone
+            backbone_params.append(param)
+    
+    # Create optimizer with different learning rates for different parameter groups
+    optimizer_params = [
+        {"params": backbone_params, "lr": backbone_lr, "betas": (0.8, 0.999), "eps": 1e-8, "weight_decay": 1e-6},
+        {"params": head_params, "lr": head_lr, "betas": (0.8, 0.999), "eps": 1e-8, "weight_decay": 1e-6}
+    ]
+    optimizer = torch.optim.AdamW(optimizer_params)
     lr_scheduler = LambdaLR(optimizer, lr_lambda=lambda step: warmup_lambda(step, 200))
     if args.load_pretrain_ckpt:
         state_dict = torch.load(str(os.path.join(args.pretrain_checkpoint_path, args.pretrain_model_file)))

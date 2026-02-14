@@ -315,14 +315,24 @@ def main_finetune():
     adata_train_val = load_data(args.train_file_path)
     adata_test = load_data(args.test_file_path)
 
+    # Keep the original var attributes for each dataset
+    var_attrs_train_val = adata_train_val.var.copy()
+    var_attrs_test = adata_test.var.copy()
+    
     adata_train_val.obs["tag"] = "train"
     adata_test.obs["tag"] = "test"
     adata_concat = sc.AnnData.concatenate(adata_train_val, adata_test)
-    adata_train_val = adata_concat[adata_concat.obs["tag"] == "train"]
-    adata_test = adata_concat[adata_concat.obs["tag"] == "test"]
+    adata_train = adata_concat[adata_concat.obs["tag"] == "train"]
+    adata_test_result = adata_concat[adata_concat.obs["tag"] == "test"]
+    
+    # Restore the original var attributes to prevent issues with dataset access
+    adata_train.var = var_attrs_train_val
+    adata_test_result.var = var_attrs_test
+    adata_train_val.var = var_attrs_train_val  # Also restore to the original train_val
+    
     max_length = adata_concat.shape[1]
 
-    cell_type = list(set(adata_train_val.obs[args.cell_type_col].unique().tolist() + adata_test.obs[
+    cell_type = list(set(adata_train_val.obs[args.cell_type_col].unique().tolist() + adata_test_result.obs[
         args.cell_type_col].unique().tolist()))
     cell_type_map = {cell_type: idx for idx, cell_type in enumerate(sorted(cell_type))}
 
@@ -354,17 +364,17 @@ def main_finetune():
     pretrain_model_args["mask_ratio"] = 0.0
     pretrain_data_args["return_batch_label"] = False
 
-    idx_list = [i for i in range(adata_train_val.X.shape[0])]
+    idx_list = [i for i in range(adata_train.X.shape[0])]
     random.shuffle(idx_list)
     split_idx = int(len(idx_list) * 0.9)
     train_idx = idx_list[:split_idx]
     val_idx = idx_list[split_idx:]
-    adata_train = adata_train_val[train_idx]
-    adata_val = adata_train_val[val_idx]
+    adata_train_sub = adata_train[train_idx]
+    adata_val = adata_train[val_idx]
 
-    train_dataset = DatasetMultiPad(*[adata_train], **pretrain_data_args)
+    train_dataset = DatasetMultiPad(*[adata_train_sub], **pretrain_data_args)
     val_dataset = DatasetMultiPad(*[adata_val], **pretrain_data_args)
-    test_dataset = DatasetMultiPad(*[adata_test], **pretrain_data_args)
+    test_dataset = DatasetMultiPad(*[adata_test_result], **pretrain_data_args)
     # Print dataset lengths
     print(f"Train Dataset Length: {len(train_dataset)}")
     print(f"Validation Dataset Length: {len(val_dataset)}")

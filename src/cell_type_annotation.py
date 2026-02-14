@@ -10,6 +10,8 @@ import torch.nn.functional as F
 import yaml
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import f1_score
+from sklearn.metrics import roc_auc_score
+from sklearn.preprocessing import label_binarize
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 
@@ -113,6 +115,8 @@ def evaluate_finetune_model(model, val_dataloader, criterion, device):
     eval_f1_score = 0
     cell_type_label_list = []
     cell_type_pred_list = []
+    cell_type_prob_list = []  # Store probabilities for ROC-AUC calculation
+    
     with torch.no_grad():
         for val_batch in val_dataloader:
             value, chromosome, pos_start, pos_end, cell_type = val_batch
@@ -122,11 +126,16 @@ def evaluate_finetune_model(model, val_dataloader, criterion, device):
             pos_start = pos_start.to(device)
             pos_end = pos_end.to(device)
             cell_type_output = model(value, chromosome, pos_start, pos_end)
+            
+            # Apply softmax to get probabilities
+            cell_type_probs = torch.softmax(cell_type_output, dim=-1)
+            
             tmp_loss_cell_type_prediction = criterion(cell_type_output, cell_type_gpu)
             cell_type_pred = torch.argmax(cell_type_output, dim=-1)
 
             cell_type_label_list.extend(cell_type.detach().cpu().numpy().tolist())
             cell_type_pred_list.extend(cell_type_pred.detach().cpu().numpy().tolist())
+            cell_type_prob_list.extend(cell_type_probs.detach().cpu().numpy())
 
             tmp_f1_score = f1_score(cell_type, cell_type_pred.cpu().numpy(), average='macro')
             eval_f1_score += tmp_f1_score
@@ -147,7 +156,26 @@ def evaluate_finetune_model(model, val_dataloader, criterion, device):
     accuracy_tensor = torch.tensor(accuracy).to(device)
     accuracy = accuracy_tensor.item()
 
-    return eval_loss, eval_f1_score, accuracy, cell_type_label_list, cell_type_pred_list
+    # Calculate ROC-AUC
+    try:
+        # Convert labels to binary format for multiclass ROC-AUC
+        n_classes = len(set(cell_type_label_list))
+        if n_classes > 1:  # Only calculate if we have more than one class
+            cell_type_labels_onehot = label_binarize(cell_type_label_list, classes=range(n_classes))
+            if n_classes == 2:
+                # For binary classification, keep only positive class probabilities
+                cell_type_probs_np = [prob[1] for prob in cell_type_prob_list]
+                eval_roc_auc = roc_auc_score(cell_type_label_list, cell_type_probs_np, average='macro', multi_class='ovr')
+            else:
+                # For multiclass, use one-vs-rest approach
+                eval_roc_auc = roc_auc_score(cell_type_labels_onehot, cell_type_prob_list, average='macro', multi_class='ovr')
+        else:
+            eval_roc_auc = 0.5  # Default value if only one class present
+    except Exception as e:
+        print(f"Could not calculate ROC-AUC due to: {e}")
+        eval_roc_auc = 0.0
+
+    return eval_loss, eval_f1_score, accuracy, eval_roc_auc, cell_type_label_list, cell_type_pred_list
 
 
 def cell_type_finetune(
@@ -188,18 +216,18 @@ def cell_type_finetune(
                     f"accuracy: {accuracy:.4f}, lr: {optimizer.param_groups[0]['lr']}"
                 )
             if step % finetune_args.get("val_evaluate", 10) == 0:
-                eval_loss, eval_f1_score, eval_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
+                eval_loss, eval_f1_score, eval_accuracy, eval_roc_auc, eval_cell_type_label_list, eval_cell_type_pred_list = \
                     evaluate_finetune_model(model, val_dataloader, cell_type_criterion, device)
-                test_loss, test_f1_score, test_accuracy, eval_cell_type_label_list, eval_cell_type_pred_list = \
+                test_loss, test_f1_score, test_accuracy, test_roc_auc, eval_cell_type_label_list, eval_cell_type_pred_list = \
                     evaluate_finetune_model(model, test_dataloader, cell_type_criterion, device)
                 logger.info(
                     f"[Evaluate] loss at epoch {eph} step {step}: {eval_loss}, "
-                    f"cell type accuracy: {eval_accuracy:.4f}, f1 score: {eval_f1_score:.4f}, "
+                    f"cell type accuracy: {eval_accuracy:.4f}, f1 score: {eval_f1_score:.4f}, roc auc: {eval_roc_auc:.4f}, "
                     f"lr: {optimizer.param_groups[0]['lr']:.6f}"
                 )
                 logger.info(
                     f"[Test] loss at epoch {eph} step {step}: {test_loss}, "
-                    f"cell type accuracy: {test_accuracy:.4f}, f1 score: {test_f1_score:.4f}, "
+                    f"cell type accuracy: {test_accuracy:.4f}, f1 score: {test_f1_score:.4f}, roc auc: {test_roc_auc:.4f}, "
                     f"lr: {optimizer.param_groups[0]['lr']:.6f}"
                 )
                 if eval_f1_score > best_f1_score:
@@ -209,7 +237,7 @@ def cell_type_finetune(
                         pickle.dump((eval_cell_type_label_list, eval_cell_type_pred_list), f)
                     logger.info(
                         f"[Test] best validation f1_score: {best_f1_score:.4f} at epoch {eph} step {step}, "
-                        f"test accuracy: {test_accuracy:.4f}, f1_score: {test_f1_score:.4f}"
+                        f"test accuracy: {test_accuracy:.4f}, f1_score: {test_f1_score:.4f}, roc auc: {test_roc_auc:.4f}"
                     )
                     torch.save(model.state_dict(), os.path.join(finetune_args["log_path"], "best_model.pt"))
             step += 1
@@ -249,14 +277,23 @@ def main_finetune():
     adata_train_val = load_data(args.train_file_path)
     adata_test = load_data(args.test_file_path)
 
+    # Add tag column to distinguish train and test sets
     adata_train_val.obs["tag"] = "train"
     adata_test.obs["tag"] = "test"
-    adata_concat = sc.AnnData.concatenate(adata_train_val, adata_test)
-    adata_train_val = adata_concat[adata_concat.obs["tag"] == "train"]
-    adata_test = adata_concat[adata_concat.obs["tag"] == "test"]
+    
+    # Determine max length from concatenated data but keep original objects for .var attributes
+    import anndata
+    adata_concat = anndata.concat([adata_train_val, adata_test])
     max_length = adata_concat.shape[1]
+    
+    # Reset tags to original values to preserve .var attributes
+    adata_train_val.obs["tag"] = "train"
+    adata_test.obs["tag"] = "test"
+    
+    # Use original objects for train/validation split
+    adata_train_full = adata_train_val
 
-    cell_type = list(set(adata_train_val.obs[args.cell_type_col].unique().tolist() + adata_test.obs[
+    cell_type = list(set(adata_train_full.obs[args.cell_type_col].unique().tolist() + adata_test.obs[
         args.cell_type_col].unique().tolist()))
     cell_type_map = {cell_type: idx for idx, cell_type in enumerate(sorted(cell_type))}
 
@@ -279,8 +316,8 @@ def main_finetune():
     pretrain_data_args['cell_type_map'] = cell_type_map
     pretrain_model_args["cell_type_num"] = len(cell_type_map)
     pretrain_data_args['cell_type_col'] = args.cell_type_col
-    pretrain_data_args["feature_num"] = adata_train_val.shape[1]
-    pretrain_model_args["feature_num"] = adata_train_val.shape[1]
+    pretrain_data_args["feature_num"] = adata_train_full.shape[1]
+    pretrain_model_args["feature_num"] = adata_train_full.shape[1]
     pretrain_model_args["batch_size"] = args.batch_size
     pretrain_data_args["max_length"] = max_length
     pretrain_model_args["max_length"] = max_length
@@ -288,13 +325,14 @@ def main_finetune():
     pretrain_model_args["mask_ratio"] = 0.0
     pretrain_data_args["return_batch_label"] = False
 
-    idx_list = [i for i in range(adata_train_val.X.shape[0])]
+    # Split the training data into train and validation
+    idx_list = [i for i in range(adata_train_full.X.shape[0])]
     random.shuffle(idx_list)
     split_idx = int(len(idx_list) * 0.9)
     train_idx = idx_list[:split_idx]
     val_idx = idx_list[split_idx:]
-    adata_train = adata_train_val[train_idx]
-    adata_val = adata_train_val[val_idx]
+    adata_train = adata_train_full[train_idx]
+    adata_val = adata_train_full[val_idx]
 
     train_dataset = DatasetMultiPad(*[adata_train], **pretrain_data_args)
     val_dataset = DatasetMultiPad(*[adata_val], **pretrain_data_args)

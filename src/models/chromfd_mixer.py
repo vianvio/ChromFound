@@ -9,8 +9,8 @@ from mamba_ssm.modules.mamba_simple import Mamba
 from mamba_ssm.modules.mha import MHA
 from mamba_ssm.modules.mlp import GatedMLP
 
-from chromfd_block import Block
-from embedding_model import PretrainEmbeddingSimple
+from .chromfd_block import Block
+from .embedding_model import PretrainEmbeddingSimple
 
 try:
     from mamba_ssm.ops.triton.layer_norm import RMSNorm, layer_norm_fn, rms_norm_fn

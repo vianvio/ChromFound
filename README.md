@@ -89,9 +89,44 @@ If you use ChromFound, please cite our paper:
 }
 ```
 
+## Parameter-Efficient Fine-tuning with LoRA
+
+ChromFound now supports parameter-efficient fine-tuning using Low-Rank Adaptation (LoRA). This approach significantly reduces the number of trainable parameters while maintaining model performance.
+
+### Benefits of LoRA Fine-tuning:
+- Dramatically reduces memory usage during training
+- Prevents catastrophic forgetting of pre-trained representations
+- Enables efficient fine-tuning on multiple downstream tasks
+- Allows for quick adaptation without full model retraining
+
+### Using LoRA Fine-tuning
+
+To fine-tune ChromFound with LoRA, use the following command:
+
+```bash
+python -m src.lora_finetune \
+    --checkpoint_dir src/checkpoints \
+    --output_dir ./fine_tuned_models \
+    --lora_rank 8 \
+    --lora_alpha 16.0 \
+    --lora_dropout 0.0 \
+    --batch_size 16 \
+    --learning_rate 1e-3 \
+    --epochs 10 \
+    --task_type classification \
+    --num_classes 5
+```
+
+### LoRA Configuration Options:
+- `--lora_rank`: Rank of the low-rank adaptation matrices (default: 8)
+- `--lora_alpha`: Scaling factor for LoRA updates (default: 16.0)
+- `--lora_dropout`: Dropout rate applied to LoRA layers (default: 0.0)
+- `--task_type`: Type of downstream task ('classification' or 'regression')
+
 ## Changelog
 
 ### v1.0.0 (2025-10-16)
 - Initial release
 - Support for basic cell embedding and cell type annotation functionality
+- Added LoRA fine-tuning capability for parameter-efficient adaptation
 - update README.md
